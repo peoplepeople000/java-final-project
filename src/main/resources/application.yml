@@ -1,0 +1,21 @@
+server:
+  port: 8081
+
+spring:
+  datasource:
+    url: jdbc:sqlite:taskmanager.db
+    driver-class-name: org.sqlite.JDBC
+  jpa:
+    database-platform: com.example.taskmanager.config.SQLiteDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+logging:
+  level:
+    org:
+      hibernate:
+        SQL: debug
+        type:
+          descriptor:
+            sql:
+              BasicBinder: trace

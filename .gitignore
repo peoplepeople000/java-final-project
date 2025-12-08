@@ -1,0 +1,19 @@
+# Maven build artifacts
+/target/
+/bin/
+
+# IDE settings
+.vscode/
+.idea/
+*.iml
+
+# Operating system clutter
+.DS_Store
+Thumbs.db
+
+# Local databases/logs
+/taskmanager.db
+*.log
+
+# Maven Wrapper binaries
+.mvn/wrapper/maven-wrapper.jar
