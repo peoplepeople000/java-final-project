@@ -1,15 +1,5 @@
 package com.example.taskmanager.service;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import com.example.taskmanager.exception.BadRequestException;
 import com.example.taskmanager.exception.NotFoundException;
 import com.example.taskmanager.model.entity.Project;
@@ -17,30 +7,53 @@ import com.example.taskmanager.model.entity.ProjectMember;
 import com.example.taskmanager.model.entity.User;
 import com.example.taskmanager.repository.ProjectMemberRepository;
 import com.example.taskmanager.repository.ProjectRepository;
+import com.example.taskmanager.repository.UserRepository;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProjectService {
 
+    private static final String ROLE_OWNER = "OWNER";
+    private static final String ROLE_MEMBER = "MEMBER";
+
+    private final UserRepository userRepository;
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository projectMemberRepository;
-    private final UserService userService;
 
-    public ProjectService(ProjectRepository projectRepository,
-            ProjectMemberRepository projectMemberRepository,
-            UserService userService) {
+    public ProjectService(UserRepository userRepository,
+            ProjectRepository projectRepository,
+            ProjectMemberRepository projectMemberRepository) {
+        this.userRepository = userRepository;
         this.projectRepository = projectRepository;
         this.projectMemberRepository = projectMemberRepository;
-        this.userService = userService;
     }
 
     @Transactional
-    public Project createProject(Long ownerId, String name, String description) {
-        User owner = userService.getById(ownerId);
+    public Project createProject(Long currentUserId, String name, String description) {
+        User owner = userRepository.findById(currentUserId)
+                .orElseThrow(() -> new NotFoundException("User not found"));
+
         Project project = new Project();
         project.setOwner(owner);
         project.setName(name);
         project.setDescription(description);
-        return projectRepository.save(project);
+        Project savedProject = projectRepository.save(project);
+
+        ProjectMember ownerMember = new ProjectMember();
+        ownerMember.setProject(savedProject);
+        ownerMember.setUser(owner);
+        ownerMember.setRole(ROLE_OWNER);
+        ownerMember.setJoinedAt(LocalDateTime.now());
+        projectMemberRepository.save(ownerMember);
+
+        return savedProject;
     }
 
     @Transactional(readOnly = true)
@@ -50,36 +63,62 @@ public class ProjectService {
     }
 
     @Transactional(readOnly = true)
-    public List<Project> findProjectsForUser(Long userId) {
-        User user = userService.getById(userId);
-        Map<Long, Project> results = new LinkedHashMap<>();
-        projectRepository.findByOwnerId(user.getId()).forEach(p -> results.put(p.getId(), p));
-        projectMemberRepository.findByUserId(user.getId()).stream()
+    public List<Project> getProjectsForUser(Long currentUserId) {
+        userRepository.findById(currentUserId)
+                .orElseThrow(() -> new NotFoundException("User not found"));
+
+        Map<Long, Project> projects = new LinkedHashMap<>();
+        projectRepository.findByOwnerId(currentUserId)
+                .forEach(project -> projects.put(project.getId(), project));
+
+        projectMemberRepository.findByUserId(currentUserId).stream()
                 .map(ProjectMember::getProject)
-                .forEach(p -> results.put(p.getId(), p));
-        return new ArrayList<>(results.values());
+                .forEach(project -> projects.put(project.getId(), project));
+
+        return new ArrayList<>(projects.values());
     }
 
     @Transactional
-    public ProjectMember addMember(Long projectId, Long userId, String role) {
-        Project project = getById(projectId);
-        User user = userService.getById(userId);
-        boolean alreadyMember = projectMemberRepository.findByProjectId(projectId).stream()
-                .anyMatch(member -> member.getUser().getId().equals(userId));
-        if (project.getOwner().getId().equals(userId) || alreadyMember) {
-            throw new BadRequestException("User already belongs to this project");
+    public ProjectMember addMember(Long currentUserId, Long projectId, String usernameOrEmail) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new NotFoundException("Project not found"));
+
+        ProjectMember currentMembership = projectMemberRepository.findByProjectIdAndUserId(projectId, currentUserId)
+                .orElseThrow(() -> new BadRequestException("Only project owner can add members"));
+
+        if (!ROLE_OWNER.equalsIgnoreCase(currentMembership.getRole())) {
+            throw new BadRequestException("Only project owner can add members");
         }
-        ProjectMember member = new ProjectMember();
-        member.setProject(project);
-        member.setUser(user);
-        member.setRole(role == null || role.trim().isEmpty() ? "MEMBER" : role.trim());
-        member.setJoinedAt(LocalDateTime.now());
-        return projectMemberRepository.save(member);
+
+        User targetUser = findUserByUsernameOrEmail(usernameOrEmail)
+                .orElseThrow(() -> new NotFoundException("Target user not found"));
+
+        projectMemberRepository.findByProjectIdAndUserId(projectId, targetUser.getId())
+                .ifPresent(existing -> {
+                    throw new BadRequestException("User is already a member of this project");
+                });
+
+        ProjectMember newMember = new ProjectMember();
+        newMember.setProject(project);
+        newMember.setUser(targetUser);
+        newMember.setRole(ROLE_MEMBER);
+        newMember.setJoinedAt(LocalDateTime.now());
+        return projectMemberRepository.save(newMember);
     }
 
-    @Transactional(readOnly = true)
-    public List<ProjectMember> listMembers(Long projectId) {
-        getById(projectId); // validate exists
-        return projectMemberRepository.findByProjectId(projectId);
+    private Optional<User> findUserByUsernameOrEmail(String usernameOrEmail) {
+        if (usernameOrEmail == null) {
+            return Optional.empty();
+        }
+        String lookup = usernameOrEmail.trim();
+        if (lookup.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Optional<User> byUsername = userRepository.findByUsername(lookup);
+        if (byUsername.isPresent()) {
+            return byUsername;
+        }
+        return userRepository.findByEmail(lookup);
     }
 }
