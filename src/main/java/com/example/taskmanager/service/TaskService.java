@@ -1,125 +1,162 @@
 package com.example.taskmanager.service;
 
-import java.time.LocalDateTime;
-import java.util.List;
-
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
+import com.example.taskmanager.exception.BadRequestException;
 import com.example.taskmanager.exception.NotFoundException;
-import com.example.taskmanager.model.entity.Project;
 import com.example.taskmanager.model.entity.Project;
 import com.example.taskmanager.model.entity.Task;
 import com.example.taskmanager.model.entity.User;
+import com.example.taskmanager.repository.ProjectMemberRepository;
+import com.example.taskmanager.repository.ProjectRepository;
 import com.example.taskmanager.repository.TaskRepository;
+import com.example.taskmanager.repository.UserRepository;
+import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class TaskService {
 
-    private final TaskRepository taskRepository;
-    private final ProjectService projectService;
-    private final UserService userService;
+    private static final String STATUS_TODO = "TODO";
+    private static final String STATUS_DOING = "DOING";
+    private static final String STATUS_DONE = "DONE";
+    private static final Set<String> ALLOWED_STATUSES = new HashSet<>(Arrays.asList(
+            STATUS_TODO, STATUS_DOING, STATUS_DONE
+    ));
 
-    public TaskService(TaskRepository taskRepository, ProjectService projectService, UserService userService) {
+    private final TaskRepository taskRepository;
+    private final ProjectRepository projectRepository;
+    private final ProjectMemberRepository projectMemberRepository;
+    private final UserRepository userRepository;
+
+    public TaskService(TaskRepository taskRepository,
+            ProjectRepository projectRepository,
+            ProjectMemberRepository projectMemberRepository,
+            UserRepository userRepository) {
         this.taskRepository = taskRepository;
-        this.projectService = projectService;
-        this.userService = userService;
+        this.projectRepository = projectRepository;
+        this.projectMemberRepository = projectMemberRepository;
+        this.userRepository = userRepository;
     }
 
     @Transactional
-    public Task createTask(Long projectId, TaskPayload payload) {
-        Project project = projectService.getById(projectId);
+    public Task createTask(Long currentUserId, Long projectId, String title, String description, String status,
+            String priority, Long assigneeId, LocalDateTime dueDate) {
+
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new NotFoundException("Project not found"));
+
+        ensureProjectMembership(projectId, currentUserId);
+
+        User assignee = null;
+        if (assigneeId != null) {
+            assignee = loadAndValidateAssignee(projectId, assigneeId);
+        }
+
+        String resolvedStatus = sanitizeStatus(status);
+
         Task task = new Task();
         task.setProject(project);
-        task.setTitle(payload.getTitle());
-        task.setDescription(payload.getDescription());
-        if (payload.getStatus() != null) {
-            task.setStatus(payload.getStatus());
-        }
-        if (payload.getPriority() != null) {
-            task.setPriority(payload.getPriority());
-        }
-        if (payload.getAssigneeId() != null) {
-            User assignee = userService.getById(payload.getAssigneeId());
-            task.setAssignee(assignee);
-        }
-        task.setDueDate(payload.getDueDate());
+        task.setTitle(title);
+        task.setDescription(description);
+        task.setStatus(resolvedStatus);
+        task.setPriority(priority);
+        task.setAssignee(assignee);
+        task.setDueDate(dueDate);
+
         return taskRepository.save(task);
     }
 
     @Transactional(readOnly = true)
-    public List<Task> findByProject(Long projectId) {
-        projectService.getById(projectId);
+    public List<Task> getTasksForProject(Long currentUserId, Long projectId, String statusFilter,
+            Long assigneeIdFilter) {
+        projectRepository.findById(projectId)
+                .orElseThrow(() -> new NotFoundException("Project not found"));
+
+        ensureProjectMembership(projectId, currentUserId);
+
+        // TODO: apply filtering by statusFilter and assigneeIdFilter
         return taskRepository.findByProjectId(projectId);
     }
 
-    @Transactional
-    public Task updateStatus(Long taskId, String status) {
+    @Transactional(readOnly = true)
+    public Task getTaskById(Long currentUserId, Long taskId) {
         Task task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new NotFoundException("Task not found"));
-        task.setStatus(status);
-        if (task.getDueDate() != null) {
-            LocalDateTime now = LocalDateTime.now();
-            task.setOverdue(task.getDueDate().isBefore(now));
-            task.setDueSoon(!task.isOverdue() && now.plusDays(2).isAfter(task.getDueDate()));
+
+        ensureProjectMembership(task.getProject().getId(), currentUserId);
+        return task;
+    }
+
+    @Transactional
+    public Task updateTask(Long currentUserId, Long taskId, String title, String description, String status,
+            String priority, Long assigneeId, LocalDateTime dueDate) {
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new NotFoundException("Task not found"));
+
+        ensureProjectMembership(task.getProject().getId(), currentUserId);
+
+        User assignee = null;
+        if (assigneeId != null) {
+            assignee = loadAndValidateAssignee(task.getProject().getId(), assigneeId);
         }
+
+        if (title != null) {
+            task.setTitle(title);
+        }
+        if (description != null) {
+            task.setDescription(description);
+        }
+        if (status != null) {
+            task.setStatus(sanitizeStatus(status));
+        }
+        if (priority != null) {
+            task.setPriority(priority);
+        }
+        if (assigneeId != null) {
+            task.setAssignee(assignee);
+        }
+        if (dueDate != null) {
+            task.setDueDate(dueDate);
+        }
+
         return taskRepository.save(task);
     }
 
-    public static class TaskPayload {
-        private String title;
-        private String description;
-        private String status;
-        private String priority;
-        private Long assigneeId;
-        private LocalDateTime dueDate;
+    @Transactional
+    public void deleteTask(Long currentUserId, Long taskId) {
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new NotFoundException("Task not found"));
+        ensureProjectMembership(task.getProject().getId(), currentUserId);
+        taskRepository.delete(task);
+    }
 
-        public String getTitle() {
-            return title;
-        }
+    private void ensureProjectMembership(Long projectId, Long userId) {
+        projectMemberRepository.findByProjectIdAndUserId(projectId, userId)
+                .orElseThrow(() -> new BadRequestException("User is not a member of this project"));
+    }
 
-        public void setTitle(String title) {
-            this.title = title;
-        }
+    private User loadAndValidateAssignee(Long projectId, Long assigneeId) {
+        User assignee = userRepository.findById(assigneeId)
+                .orElseThrow(() -> new NotFoundException("Assignee user not found"));
 
-        public String getDescription() {
-            return description;
-        }
+        projectMemberRepository.findByProjectIdAndUserId(projectId, assigneeId)
+                .orElseThrow(() -> new BadRequestException("Assignee must be a member of the project"));
 
-        public void setDescription(String description) {
-            this.description = description;
-        }
+        return assignee;
+    }
 
-        public String getStatus() {
-            return status;
+    private String sanitizeStatus(String status) {
+        if (status == null || status.trim().isEmpty()) {
+            return STATUS_TODO;
         }
-
-        public void setStatus(String status) {
-            this.status = status;
+        String upper = status.trim().toUpperCase();
+        if (!ALLOWED_STATUSES.contains(upper)) {
+            throw new BadRequestException("Invalid status. Allowed values: TODO, DOING, DONE");
         }
-
-        public String getPriority() {
-            return priority;
-        }
-
-        public void setPriority(String priority) {
-            this.priority = priority;
-        }
-
-        public Long getAssigneeId() {
-            return assigneeId;
-        }
-
-        public void setAssigneeId(Long assigneeId) {
-            this.assigneeId = assigneeId;
-        }
-
-        public LocalDateTime getDueDate() {
-            return dueDate;
-        }
-
-        public void setDueDate(LocalDateTime dueDate) {
-            this.dueDate = dueDate;
-        }
+        return upper;
     }
 }
