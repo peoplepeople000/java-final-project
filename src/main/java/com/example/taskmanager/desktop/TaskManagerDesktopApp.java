@@ -20,22 +20,43 @@ import com.example.taskmanager.desktop.DesktopApiClient.AuthResponse;
 public class TaskManagerDesktopApp extends JFrame {
 
     private final DesktopApiClient apiClient;
+    private final JTabbedPane tabs;
+    private final ProjectsPanel projectsPanel;
+    private final TasksPanel tasksPanel;
 
     public TaskManagerDesktopApp() {
         this.apiClient = new DesktopApiClient("http://localhost:8081");
         setTitle("Task Manager Desktop Client");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(500, 320);
+        setSize(900, 600);
         setLocationRelativeTo(null);
 
-        JTabbedPane tabs = new JTabbedPane();
+        this.tabs = new JTabbedPane();
+        this.projectsPanel = new ProjectsPanel(apiClient);
+        this.tasksPanel = new TasksPanel(apiClient);
+        this.projectsPanel.setProjectSelectionListener(tasksPanel::setCurrentProject);
+
         tabs.addTab("Register", new RegisterPanel(apiClient));
-        tabs.addTab("Login", new LoginPanel(apiClient));
+        tabs.addTab("Login", new LoginPanel(apiClient, this::onLoginSuccess));
+        tabs.addTab("Projects", projectsPanel);
+        tabs.addTab("Tasks", tasksPanel);
+
+        // disable project/task tabs until login
+        tabs.setEnabledAt(2, false);
+        tabs.setEnabledAt(3, false);
+
         add(tabs, BorderLayout.CENTER);
     }
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> new TaskManagerDesktopApp().setVisible(true));
+    }
+
+    private void onLoginSuccess(AuthResponse user) {
+        tabs.setEnabledAt(2, true);
+        tabs.setEnabledAt(3, true);
+        tabs.setSelectedIndex(2);
+        projectsPanel.reloadProjects();
     }
 
     private abstract static class BaseAuthPanel extends JPanel {
@@ -127,8 +148,11 @@ public class TaskManagerDesktopApp extends JFrame {
 
     private static class LoginPanel extends BaseAuthPanel {
 
-        LoginPanel(DesktopApiClient apiClient) {
+        private final LoginSuccessListener loginSuccessListener;
+
+        LoginPanel(DesktopApiClient apiClient, LoginSuccessListener loginSuccessListener) {
             super(apiClient);
+            this.loginSuccessListener = loginSuccessListener;
             JTextField usernameOrEmailField = new JTextField();
             JPasswordField passwordField = new JPasswordField();
             JButton loginButton = new JButton("Login");
@@ -156,22 +180,31 @@ public class TaskManagerDesktopApp extends JFrame {
             loginButton.addActionListener(event -> {
                 loginButton.setEnabled(false);
                 updateStatus("Signing in...");
-                new SwingWorker<Void, Void>() {
+                new SwingWorker<AuthResponse, Void>() {
                     @Override
-                    protected Void doInBackground() {
+                    protected AuthResponse doInBackground() {
                         try {
                             AuthResponse response = apiClient.login(usernameOrEmailField.getText().trim(),
                                     new String(passwordField.getPassword()));
                             updateStatus("Welcome " + response.getUsername() + " (" + response.getEmail() + ")");
+                            return response;
                         } catch (Exception ex) {
                             updateStatus("Login failed: " + describeError(ex));
+                            return null;
                         }
-                        return null;
                     }
 
                     @Override
                     protected void done() {
                         loginButton.setEnabled(true);
+                        try {
+                            AuthResponse response = get();
+                            if (response != null && loginSuccessListener != null) {
+                                loginSuccessListener.onLoginSuccess(response);
+                            }
+                        } catch (Exception ignored) {
+                            // ignore
+                        }
                     }
                 }.execute();
             });
@@ -179,5 +212,10 @@ public class TaskManagerDesktopApp extends JFrame {
             add(form, BorderLayout.CENTER);
             add(statusLabel, BorderLayout.SOUTH);
         }
+    }
+
+    @FunctionalInterface
+    private interface LoginSuccessListener {
+        void onLoginSuccess(AuthResponse user);
     }
 }
