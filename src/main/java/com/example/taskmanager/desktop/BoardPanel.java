@@ -29,6 +29,7 @@ public class BoardPanel extends JPanel {
         add(split, BorderLayout.CENTER);
 
         projectsPanel.setProjectSelectionListener(project -> tasksPanel.setCurrentProject(project));
+        projectsPanel.setProjectClearedListener(tasksPanel::clearCurrentProject);
     }
 
     private JPanel buildHeader() {

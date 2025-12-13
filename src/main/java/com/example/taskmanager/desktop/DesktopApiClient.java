@@ -99,15 +99,25 @@ public class DesktopApiClient {
                 new ParameterizedTypeReference<List<UserDto>>() {});
     }
 
-    public List<UserDto> listProjectMembers(Long projectId) {
+    public List<MemberDto> listProjectMembers(Long projectId) {
         return exchangeWithAuth("/api/projects/" + projectId + "/members", HttpMethod.GET, null,
-                new ParameterizedTypeReference<List<UserDto>>() {});
+                new ParameterizedTypeReference<List<MemberDto>>() {});
     }
 
     public void addProjectMember(Long projectId, Long userId) {
         AddMemberRequest request = new AddMemberRequest();
         request.setUsernameOrEmail(String.valueOf(userId));
         exchangeWithAuth("/api/projects/" + projectId + "/members", HttpMethod.POST, request,
+                new ParameterizedTypeReference<Void>() {});
+    }
+
+    public void removeProjectMember(Long projectId, Long userId) {
+        exchangeWithAuth("/api/projects/" + projectId + "/members/" + userId, HttpMethod.DELETE, null,
+                new ParameterizedTypeReference<Void>() {});
+    }
+
+    public void deleteProject(Long projectId) {
+        exchangeWithAuth("/api/projects/" + projectId, HttpMethod.DELETE, null,
                 new ParameterizedTypeReference<Void>() {});
     }
 
@@ -467,6 +477,46 @@ public class DesktopApiClient {
 
         public void setEmail(String email) {
             this.email = email;
+        }
+
+        @Override
+        public String toString() {
+            return username == null ? "" : username;
+        }
+    }
+
+    public static class MemberDto {
+        private Long userId;
+        private String username;
+        private String role;
+
+        public Long getUserId() {
+            return userId;
+        }
+
+        public void setUserId(Long userId) {
+            this.userId = userId;
+        }
+
+        public String getUsername() {
+            return username;
+        }
+
+        public void setUsername(String username) {
+            this.username = username;
+        }
+
+        public String getRole() {
+            return role;
+        }
+
+        public void setRole(String role) {
+            this.role = role;
+        }
+
+        @Override
+        public String toString() {
+            return username == null ? "" : username;
         }
     }
 

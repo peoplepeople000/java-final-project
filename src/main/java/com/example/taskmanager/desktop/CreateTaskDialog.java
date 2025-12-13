@@ -102,6 +102,7 @@ public class CreateTaskDialog extends JDialog {
             label.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
             return label;
         });
+        assigneeField.setEnabled(false);
         form.add(assigneeField, gbc);
 
         gbc.gridx = 0;
@@ -131,23 +132,29 @@ public class CreateTaskDialog extends JDialog {
 
     private void loadMembers() {
         assigneeField.removeAllItems();
-        new SwingWorker<List<UserDto>, Void>() {
+        assigneeField.setEnabled(false);
+        new SwingWorker<List<DesktopApiClient.MemberDto>, Void>() {
             @Override
-            protected List<UserDto> doInBackground() {
+            protected List<DesktopApiClient.MemberDto> doInBackground() {
                 return apiClient.listProjectMembers(projectId);
             }
 
             @Override
             protected void done() {
                 try {
-                    List<UserDto> members = get();
+                    List<DesktopApiClient.MemberDto> members = get();
                     assigneeField.addItem(null); // unassigned
-                    for (UserDto u : members) {
-                        assigneeField.addItem(u);
+                    for (DesktopApiClient.MemberDto m : members) {
+                        UserDto user = new UserDto();
+                        user.setId(m.getUserId());
+                        user.setUsername(m.getUsername());
+                        assigneeField.addItem(user);
                     }
+                    assigneeField.setEnabled(true);
                     statusLabel.setText("Members loaded for " + projectName);
                 } catch (Exception ex) {
                     statusLabel.setText("Load members failed: " + describeError(ex));
+                    assigneeField.setEnabled(false);
                 }
             }
         }.execute();

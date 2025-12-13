@@ -5,6 +5,7 @@ import com.example.taskmanager.exception.NotFoundException;
 import com.example.taskmanager.model.entity.Project;
 import com.example.taskmanager.model.entity.ProjectMember;
 import com.example.taskmanager.model.entity.User;
+import com.example.taskmanager.repository.TaskRepository;
 import com.example.taskmanager.repository.ProjectMemberRepository;
 import com.example.taskmanager.repository.ProjectRepository;
 import com.example.taskmanager.repository.UserRepository;
@@ -26,13 +27,16 @@ public class ProjectService {
     private final UserRepository userRepository;
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository projectMemberRepository;
+    private final TaskRepository taskRepository;
 
     public ProjectService(UserRepository userRepository,
             ProjectRepository projectRepository,
-            ProjectMemberRepository projectMemberRepository) {
+            ProjectMemberRepository projectMemberRepository,
+            TaskRepository taskRepository) {
         this.userRepository = userRepository;
         this.projectRepository = projectRepository;
         this.projectMemberRepository = projectMemberRepository;
+        this.taskRepository = taskRepository;
     }
 
     @Transactional
@@ -138,5 +142,40 @@ public class ProjectService {
         } catch (NumberFormatException ex) {
             return Optional.empty();
         }
+    }
+
+    @Transactional
+    public void removeMember(Long currentUserId, Long projectId, Long userIdToRemove) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new NotFoundException("Project not found"));
+
+        Long ownerId = project.getOwner().getId();
+        if (!ownerId.equals(currentUserId)) {
+            throw new BadRequestException("Only project owner can remove members");
+        }
+        if (ownerId.equals(userIdToRemove)) {
+            throw new BadRequestException("Cannot remove project owner");
+        }
+
+        projectMemberRepository.findByProjectIdAndUserId(projectId, userIdToRemove)
+                .orElseThrow(() -> new NotFoundException("User is not a member of this project"));
+
+        // TODO: if tasks assigned to this user in the project, consider unassigning them.
+        projectMemberRepository.deleteByProjectIdAndUserId(projectId, userIdToRemove);
+    }
+
+    @Transactional
+    public void deleteProject(Long currentUserId, Long projectId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new NotFoundException("Project not found"));
+
+        if (!project.getOwner().getId().equals(currentUserId)) {
+            throw new BadRequestException("Only project owner can delete project");
+        }
+
+        // Delete related entities in order to avoid FK issues: tasks -> members -> project
+        taskRepository.deleteByProjectId(projectId);
+        projectMemberRepository.deleteByProjectId(projectId);
+        projectRepository.delete(project);
     }
 }

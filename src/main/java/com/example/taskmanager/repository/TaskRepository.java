@@ -11,4 +11,6 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
     // TODO: add query methods for filtering by status, priority, and due dates
 
     List<Task> findByProjectId(Long projectId);
+
+    void deleteByProjectId(Long projectId);
 }

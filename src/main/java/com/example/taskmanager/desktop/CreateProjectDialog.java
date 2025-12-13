@@ -1,14 +1,18 @@
 package com.example.taskmanager.desktop;
 
+import com.example.taskmanager.desktop.DesktopApiClient.MemberDto;
 import com.example.taskmanager.desktop.DesktopApiClient.ProjectDto;
 import com.example.taskmanager.desktop.DesktopApiClient.UserDto;
 import java.awt.BorderLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.FlowLayout;
 import java.awt.Insets;
 import java.awt.Window;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
@@ -18,10 +22,9 @@ import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JComboBox;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
-import javax.swing.ListSelectionModel;
-import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 
 public class CreateProjectDialog extends JDialog {
@@ -29,8 +32,11 @@ public class CreateProjectDialog extends JDialog {
     private final DesktopApiClient apiClient;
     private final JTextField nameField = new JTextField();
     private final JTextArea descriptionField = new JTextArea(3, 20);
-    private final DefaultListModel<UserDto> usersModel = new DefaultListModel<>();
-    private final JList<UserDto> usersList = new JList<>(usersModel);
+    private final DefaultListModel<MemberDto> membersModel = new DefaultListModel<>();
+    private final JList<MemberDto> membersList = new JList<>(membersModel);
+    private final JComboBox<UserDto> addCombo = new JComboBox<>();
+    private final JButton addBtn = new JButton("Add");
+    private final JButton removeBtn = new JButton("Remove");
     private final JLabel statusLabel = new JLabel(" ");
     private Consumer<ProjectDto> onSuccess;
 
@@ -75,8 +81,8 @@ public class CreateProjectDialog extends JDialog {
         form.add(new JLabel("Members"), gbc);
         gbc.gridx = 1;
         gbc.weightx = 1;
-        usersList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        usersList.setCellRenderer((list, value, index, isSelected, cellHasFocus) -> {
+
+        addCombo.setRenderer((list, value, index, isSelected, cellHasFocus) -> {
             JLabel label = new JLabel();
             if (value != null) {
                 label.setText(value.getUsername() + (value.getEmail() != null ? " (" + value.getEmail() + ")" : ""));
@@ -89,7 +95,32 @@ public class CreateProjectDialog extends JDialog {
             label.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
             return label;
         });
-        form.add(new JScrollPane(usersList), gbc);
+
+        membersList.setCellRenderer((list, value, index, isSelected, cellHasFocus) -> {
+            JLabel label = new JLabel();
+            if (value != null) {
+                label.setText(value.getUsername());
+            }
+            if (isSelected) {
+                label.setOpaque(true);
+                label.setBackground(list.getSelectionBackground());
+                label.setForeground(list.getSelectionForeground());
+            }
+            label.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
+            return label;
+        });
+        membersList.setSelectionMode(javax.swing.ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+
+        JPanel memberControls = new JPanel(new BorderLayout(4, 4));
+        JPanel addRow = new JPanel(new BorderLayout(4, 4));
+        addRow.add(addCombo, BorderLayout.CENTER);
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+        buttons.add(addBtn);
+        buttons.add(removeBtn);
+        addRow.add(buttons, BorderLayout.EAST);
+        memberControls.add(addRow, BorderLayout.NORTH);
+        memberControls.add(new JScrollPane(membersList), BorderLayout.CENTER);
+        form.add(memberControls, gbc);
 
         JPanel actions = new JPanel();
         JButton cancelBtn = new JButton("Cancel");
@@ -99,6 +130,14 @@ public class CreateProjectDialog extends JDialog {
 
         cancelBtn.addActionListener(e -> dispose());
         createBtn.addActionListener(e -> submit(createBtn));
+        addBtn.addActionListener(e -> addSelectedUser());
+        removeBtn.addActionListener(e -> removeSelectedMembers());
+        removeBtn.setEnabled(false);
+        membersList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                removeBtn.setEnabled(membersList.getSelectedValuesList().size() > 0);
+            }
+        });
 
         statusLabel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
 
@@ -118,9 +157,9 @@ public class CreateProjectDialog extends JDialog {
             protected void done() {
                 try {
                     List<UserDto> users = get();
-                    usersModel.clear();
+                    addCombo.removeAllItems();
                     for (UserDto u : users) {
-                        usersModel.addElement(u);
+                        addCombo.addItem(u);
                     }
                     statusLabel.setText("Users loaded");
                 } catch (Exception ex) {
@@ -136,16 +175,14 @@ public class CreateProjectDialog extends JDialog {
             statusLabel.setText("Name is required");
             return;
         }
-        List<UserDto> selected = usersList.getSelectedValuesList();
+        List<MemberDto> selectedMembers = membersList.getSelectedValuesList();
         DesktopApiClient.AuthResponse current = apiClient.getCurrentUser();
         Long ownerId = current != null ? current.getId() : null;
-        List<UserDto> toAdd = new ArrayList<>();
-        if (selected != null) {
-            for (UserDto u : selected) {
-                if (ownerId != null && ownerId.equals(u.getId())) {
-                    continue;
-                }
-                toAdd.add(u);
+        Set<Long> toAdd = new HashSet<>();
+        for (int i = 0; i < membersModel.size(); i++) {
+            MemberDto m = membersModel.get(i);
+            if (m.getUserId() != null && !m.getUserId().equals(ownerId)) {
+                toAdd.add(m.getUserId());
             }
         }
 
@@ -154,8 +191,8 @@ public class CreateProjectDialog extends JDialog {
             @Override
             protected ProjectDto doInBackground() {
                 ProjectDto project = apiClient.createProject(name, descriptionField.getText().trim());
-                for (UserDto u : toAdd) {
-                    apiClient.addProjectMember(project.getId(), u.getId());
+                for (Long uid : toAdd) {
+                    apiClient.addProjectMember(project.getId(), uid);
                 }
                 return project;
             }
@@ -182,6 +219,33 @@ public class CreateProjectDialog extends JDialog {
 
     public void setOnSuccess(Consumer<ProjectDto> consumer) {
         this.onSuccess = consumer;
+    }
+
+    private void addSelectedUser() {
+        UserDto selected = (UserDto) addCombo.getSelectedItem();
+        if (selected == null) {
+            return;
+        }
+        // avoid duplicates
+        for (int i = 0; i < membersModel.size(); i++) {
+            if (selected.getId() != null && selected.getId().equals(membersModel.get(i).getUserId())) {
+                return;
+            }
+        }
+        MemberDto member = new MemberDto();
+        member.setUserId(selected.getId());
+        member.setUsername(selected.getUsername());
+        membersModel.addElement(member);
+    }
+
+    private void removeSelectedMembers() {
+        List<MemberDto> selected = membersList.getSelectedValuesList();
+        if (selected == null || selected.isEmpty()) {
+            return;
+        }
+        for (MemberDto m : selected) {
+            membersModel.removeElement(m);
+        }
     }
 
     private String describeError(Exception ex) {

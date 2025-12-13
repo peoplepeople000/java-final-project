@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 import javax.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -69,6 +70,25 @@ public class ProjectController {
                 .map(ProjectMemberResponse::from)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(responses);
+    }
+
+    @DeleteMapping("/{projectId}/members/{userId}")
+    public ResponseEntity<Void> removeMember(
+            @RequestHeader(value = "X-USER-ID", required = false) String userIdHeader,
+            @PathVariable Long projectId,
+            @PathVariable Long userId) {
+        Long currentUserId = parseUserId(userIdHeader);
+        projectService.removeMember(currentUserId, projectId, userId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{projectId}")
+    public ResponseEntity<Void> deleteProject(
+            @RequestHeader(value = "X-USER-ID", required = false) String userIdHeader,
+            @PathVariable Long projectId) {
+        Long currentUserId = parseUserId(userIdHeader);
+        projectService.deleteProject(currentUserId, projectId);
+        return ResponseEntity.noContent().build();
     }
 
     private Long parseUserId(String userIdHeader) {

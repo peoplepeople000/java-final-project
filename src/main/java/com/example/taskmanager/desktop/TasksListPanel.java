@@ -92,6 +92,10 @@ public class TasksListPanel extends JPanel {
         }
     }
 
+    public void clearCurrentProject() {
+        setCurrentProject(null);
+    }
+
     private void reloadTasks() {
         if (currentProject == null) {
             statusLabel.setText("Select a project to view tasks");
