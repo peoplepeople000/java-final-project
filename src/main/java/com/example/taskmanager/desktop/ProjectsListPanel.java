@@ -51,11 +51,25 @@ public class ProjectsListPanel extends JPanel {
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT));
         JButton refreshBtn = new JButton("Refresh");
         JButton addBtn = new JButton("+ Project");
+        JButton membersBtn = new JButton("Members");
+        membersBtn.setEnabled(false);
         toolbar.add(refreshBtn);
         toolbar.add(addBtn);
+        toolbar.add(membersBtn);
 
         refreshBtn.addActionListener(e -> reloadProjects());
         addBtn.addActionListener(e -> openCreateDialog());
+        membersBtn.addActionListener(e -> openMembersDialog());
+
+        list.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                ProjectDto selected = list.getSelectedValue();
+                DesktopApiClient.AuthResponse user = apiClient.getCurrentUser();
+                boolean owner = selected != null && user != null && selected.getOwnerId() != null
+                        && selected.getOwnerId().equals(user.getId());
+                membersBtn.setEnabled(selected != null && owner);
+            }
+        });
 
         statusLabel.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
 
@@ -98,6 +112,19 @@ public class ProjectsListPanel extends JPanel {
         java.awt.Window owner = javax.swing.SwingUtilities.getWindowAncestor(this);
         CreateProjectDialog dialog = new CreateProjectDialog(apiClient, owner);
         dialog.setOnSuccess(this::reloadProjects);
+        dialog.setVisible(true);
+    }
+
+    private void openMembersDialog() {
+        ProjectDto selected = list.getSelectedValue();
+        DesktopApiClient.AuthResponse user = apiClient.getCurrentUser();
+        if (selected == null || user == null || !selected.getOwnerId().equals(user.getId())) {
+            statusLabel.setText("Only the project owner can manage members");
+            return;
+        }
+        java.awt.Window owner = javax.swing.SwingUtilities.getWindowAncestor(this);
+        ManageMembersDialog dialog = new ManageMembersDialog(apiClient, owner, selected.getId(), selected.getOwnerId(),
+                selected.getName());
         dialog.setVisible(true);
     }
 

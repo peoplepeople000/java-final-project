@@ -1,32 +1,44 @@
 package com.example.taskmanager.desktop;
 
 import com.example.taskmanager.desktop.DesktopApiClient.TaskDto;
+import com.example.taskmanager.desktop.DesktopApiClient.UserDto;
 import java.awt.BorderLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.Window;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.Date;
+import java.util.List;
 import java.util.function.Consumer;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JSpinner;
 import javax.swing.JTextField;
+import javax.swing.SpinnerDateModel;
 import javax.swing.SwingWorker;
 
 public class CreateTaskDialog extends JDialog {
 
     private final DesktopApiClient apiClient;
     private final Long projectId;
+    private final String projectName;
     private final JTextField titleField = new JTextField();
     private final JTextField descriptionField = new JTextField();
     private final JComboBox<String> statusField = new JComboBox<>(new String[] { "TODO", "DOING", "DONE" });
     private final JComboBox<String> priorityField = new JComboBox<>(new String[] { "LOW", "MEDIUM", "HIGH" });
-    private final JTextField assigneeField = new JTextField();
-    private final JTextField dueDateField = new JTextField();
+    private final JComboBox<UserDto> assigneeField = new JComboBox<>();
+    private final SpinnerDateModel dateModel = new SpinnerDateModel();
+    private final JSpinner dueDateSpinner = new JSpinner(dateModel);
+    private final JCheckBox dueDateEnabled = new JCheckBox("Set due date");
     private final JLabel statusLabel = new JLabel(" ");
     private Consumer<TaskDto> onSuccess;
 
@@ -34,11 +46,13 @@ public class CreateTaskDialog extends JDialog {
         super(owner, "Create Task for " + projectName, ModalityType.APPLICATION_MODAL);
         this.apiClient = apiClient;
         this.projectId = projectId;
+        this.projectName = projectName;
         setLayout(new BorderLayout(6, 6));
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         buildUi();
         pack();
         setLocationRelativeTo(owner);
+        loadMembers();
     }
 
     private void buildUi() {
@@ -75,15 +89,29 @@ public class CreateTaskDialog extends JDialog {
 
         gbc.gridx = 0;
         gbc.gridy++;
-        form.add(new JLabel("Assignee ID"), gbc);
+        form.add(new JLabel("Assignee"), gbc);
         gbc.gridx = 1;
+        assigneeField.setRenderer((list, value, index, isSelected, cellHasFocus) -> {
+            JLabel label = new JLabel();
+            label.setText(value != null ? value.getUsername() : "Unassigned");
+            if (isSelected) {
+                label.setOpaque(true);
+                label.setBackground(list.getSelectionBackground());
+                label.setForeground(list.getSelectionForeground());
+            }
+            label.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
+            return label;
+        });
         form.add(assigneeField, gbc);
 
         gbc.gridx = 0;
         gbc.gridy++;
-        form.add(new JLabel("Due Date"), gbc);
+        form.add(dueDateEnabled, gbc);
         gbc.gridx = 1;
-        form.add(dueDateField, gbc);
+        dueDateSpinner.setEditor(new JSpinner.DateEditor(dueDateSpinner, "yyyy-MM-dd HH:mm"));
+        dueDateSpinner.setEnabled(false);
+        dueDateEnabled.addActionListener(e -> dueDateSpinner.setEnabled(dueDateEnabled.isSelected()));
+        form.add(dueDateSpinner, gbc);
 
         JPanel actions = new JPanel();
         JButton cancelBtn = new JButton("Cancel");
@@ -101,33 +129,55 @@ public class CreateTaskDialog extends JDialog {
         add(statusLabel, BorderLayout.NORTH);
     }
 
+    private void loadMembers() {
+        assigneeField.removeAllItems();
+        new SwingWorker<List<UserDto>, Void>() {
+            @Override
+            protected List<UserDto> doInBackground() {
+                return apiClient.listProjectMembers(projectId);
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    List<UserDto> members = get();
+                    assigneeField.addItem(null); // unassigned
+                    for (UserDto u : members) {
+                        assigneeField.addItem(u);
+                    }
+                    statusLabel.setText("Members loaded for " + projectName);
+                } catch (Exception ex) {
+                    statusLabel.setText("Load members failed: " + describeError(ex));
+                }
+            }
+        }.execute();
+    }
+
     private void submit(JButton createBtn) {
         String title = titleField.getText().trim();
         if (title.isEmpty()) {
             statusLabel.setText("Title is required");
             return;
         }
-        Long assigneeId = null;
-        String assigneeText = assigneeField.getText().trim();
-        if (!assigneeText.isEmpty()) {
-            try {
-                assigneeId = Long.parseLong(assigneeText);
-            } catch (NumberFormatException ex) {
-                JOptionPane.showMessageDialog(this, "Assignee ID must be a number");
-                return;
-            }
+        UserDto assignee = (UserDto) assigneeField.getSelectedItem();
+        Long assigneeId = assignee != null ? assignee.getId() : null;
+
+        String dueDateString = null;
+        if (dueDateEnabled.isSelected()) {
+            Date date = (Date) dueDateSpinner.getValue();
+            LocalDateTime dueDate = date != null ? LocalDateTime.ofInstant(Instant.ofEpochMilli(date.getTime()),
+                    ZoneId.systemDefault()) : null;
+            dueDateString = dueDate != null ? dueDate.toString() : null;
         }
-        String dueDate = dueDateField.getText().trim().isEmpty() ? null : dueDateField.getText().trim();
 
         createBtn.setEnabled(false);
-        final Long finalAssigneeId = assigneeId;
-        final String finalDueDate = dueDate;
+        final String finalDue = dueDateString;
         new SwingWorker<TaskDto, Void>() {
             @Override
             protected TaskDto doInBackground() {
                 return apiClient.createTask(projectId, title, descriptionField.getText().trim(),
                         (String) statusField.getSelectedItem(), (String) priorityField.getSelectedItem(),
-                        finalAssigneeId, finalDueDate);
+                        assigneeId, finalDue);
             }
 
             @Override

@@ -94,6 +94,23 @@ public class DesktopApiClient {
                 new ParameterizedTypeReference<Void>() {});
     }
 
+    public List<UserDto> listAllUsers() {
+        return exchangeWithAuth("/api/users", HttpMethod.GET, null,
+                new ParameterizedTypeReference<List<UserDto>>() {});
+    }
+
+    public List<UserDto> listProjectMembers(Long projectId) {
+        return exchangeWithAuth("/api/projects/" + projectId + "/members", HttpMethod.GET, null,
+                new ParameterizedTypeReference<List<UserDto>>() {});
+    }
+
+    public void addProjectMember(Long projectId, Long userId) {
+        AddMemberRequest request = new AddMemberRequest();
+        request.setUsernameOrEmail(String.valueOf(userId));
+        exchangeWithAuth("/api/projects/" + projectId + "/members", HttpMethod.POST, request,
+                new ParameterizedTypeReference<Void>() {});
+    }
+
     private <T> T post(String path, Object payload, Class<T> responseType) {
         try {
             HttpHeaders headers = new HttpHeaders();
@@ -423,6 +440,36 @@ public class DesktopApiClient {
         }
     }
 
+    public static class UserDto {
+        private Long id;
+        private String username;
+        private String email;
+
+        public Long getId() {
+            return id;
+        }
+
+        public void setId(Long id) {
+            this.id = id;
+        }
+
+        public String getUsername() {
+            return username;
+        }
+
+        public void setUsername(String username) {
+            this.username = username;
+        }
+
+        public String getEmail() {
+            return email;
+        }
+
+        public void setEmail(String email) {
+            this.email = email;
+        }
+    }
+
     private static class ProjectCreateRequest {
         private String name;
         private String description;
@@ -510,6 +557,18 @@ public class DesktopApiClient {
 
         public void setStatus(String status) {
             this.status = status;
+        }
+    }
+
+    private static class AddMemberRequest {
+        private String usernameOrEmail;
+
+        public String getUsernameOrEmail() {
+            return usernameOrEmail;
+        }
+
+        public void setUsernameOrEmail(String usernameOrEmail) {
+            this.usernameOrEmail = usernameOrEmail;
         }
     }
 

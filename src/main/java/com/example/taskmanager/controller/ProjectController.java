@@ -60,6 +60,17 @@ public class ProjectController {
         return ResponseEntity.ok(ProjectMemberResponse.from(projectMember));
     }
 
+    @GetMapping("/{projectId}/members")
+    public ResponseEntity<List<ProjectMemberResponse>> listMembers(
+            @RequestHeader(value = "X-USER-ID", required = false) String userIdHeader,
+            @PathVariable Long projectId) {
+        Long currentUserId = parseUserId(userIdHeader);
+        List<ProjectMemberResponse> responses = projectService.listMembers(currentUserId, projectId).stream()
+                .map(ProjectMemberResponse::from)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(responses);
+    }
+
     private Long parseUserId(String userIdHeader) {
         if (userIdHeader == null || userIdHeader.trim().isEmpty()) {
             throw new BadRequestException("X-USER-ID header is required");

@@ -1,19 +1,26 @@
 package com.example.taskmanager.desktop;
 
 import com.example.taskmanager.desktop.DesktopApiClient.ProjectDto;
+import com.example.taskmanager.desktop.DesktopApiClient.UserDto;
 import java.awt.BorderLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.Window;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Consumer;
 import javax.swing.BorderFactory;
+import javax.swing.DefaultListModel;
 import javax.swing.JButton;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
+import javax.swing.JList;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
+import javax.swing.ListSelectionModel;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 
@@ -22,6 +29,8 @@ public class CreateProjectDialog extends JDialog {
     private final DesktopApiClient apiClient;
     private final JTextField nameField = new JTextField();
     private final JTextArea descriptionField = new JTextArea(3, 20);
+    private final DefaultListModel<UserDto> usersModel = new DefaultListModel<>();
+    private final JList<UserDto> usersList = new JList<>(usersModel);
     private final JLabel statusLabel = new JLabel(" ");
     private Consumer<ProjectDto> onSuccess;
 
@@ -33,6 +42,7 @@ public class CreateProjectDialog extends JDialog {
         buildUi();
         pack();
         setLocationRelativeTo(owner);
+        loadUsers();
     }
 
     private void buildUi() {
@@ -58,6 +68,29 @@ public class CreateProjectDialog extends JDialog {
         descriptionField.setWrapStyleWord(true);
         form.add(descriptionField, gbc);
 
+        gbc.gridx = 0;
+        gbc.gridy++;
+        gbc.weightx = 0;
+        gbc.anchor = GridBagConstraints.NORTHWEST;
+        form.add(new JLabel("Members"), gbc);
+        gbc.gridx = 1;
+        gbc.weightx = 1;
+        usersList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        usersList.setCellRenderer((list, value, index, isSelected, cellHasFocus) -> {
+            JLabel label = new JLabel();
+            if (value != null) {
+                label.setText(value.getUsername() + (value.getEmail() != null ? " (" + value.getEmail() + ")" : ""));
+            }
+            if (isSelected) {
+                label.setOpaque(true);
+                label.setBackground(list.getSelectionBackground());
+                label.setForeground(list.getSelectionForeground());
+            }
+            label.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
+            return label;
+        });
+        form.add(new JScrollPane(usersList), gbc);
+
         JPanel actions = new JPanel();
         JButton cancelBtn = new JButton("Cancel");
         JButton createBtn = new JButton("Create");
@@ -74,17 +107,57 @@ public class CreateProjectDialog extends JDialog {
         add(statusLabel, BorderLayout.NORTH);
     }
 
+    private void loadUsers() {
+        new SwingWorker<List<UserDto>, Void>() {
+            @Override
+            protected List<UserDto> doInBackground() {
+                return apiClient.listAllUsers();
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    List<UserDto> users = get();
+                    usersModel.clear();
+                    for (UserDto u : users) {
+                        usersModel.addElement(u);
+                    }
+                    statusLabel.setText("Users loaded");
+                } catch (Exception ex) {
+                    statusLabel.setText("Failed to load users: " + describeError(ex));
+                }
+            }
+        }.execute();
+    }
+
     private void submit(JButton createBtn) {
         String name = nameField.getText().trim();
         if (name.isEmpty()) {
             statusLabel.setText("Name is required");
             return;
         }
+        List<UserDto> selected = usersList.getSelectedValuesList();
+        DesktopApiClient.AuthResponse current = apiClient.getCurrentUser();
+        Long ownerId = current != null ? current.getId() : null;
+        List<UserDto> toAdd = new ArrayList<>();
+        if (selected != null) {
+            for (UserDto u : selected) {
+                if (ownerId != null && ownerId.equals(u.getId())) {
+                    continue;
+                }
+                toAdd.add(u);
+            }
+        }
+
         createBtn.setEnabled(false);
         new SwingWorker<ProjectDto, Void>() {
             @Override
             protected ProjectDto doInBackground() {
-                return apiClient.createProject(name, descriptionField.getText().trim());
+                ProjectDto project = apiClient.createProject(name, descriptionField.getText().trim());
+                for (UserDto u : toAdd) {
+                    apiClient.addProjectMember(project.getId(), u.getId());
+                }
+                return project;
             }
 
             @Override

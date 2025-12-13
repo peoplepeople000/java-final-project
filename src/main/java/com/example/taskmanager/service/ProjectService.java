@@ -90,7 +90,7 @@ public class ProjectService {
             throw new BadRequestException("Only project owner can add members");
         }
 
-        User targetUser = findUserByUsernameOrEmail(usernameOrEmail)
+        User targetUser = findUserByUsernameOrEmailOrId(usernameOrEmail)
                 .orElseThrow(() -> new NotFoundException("Target user not found"));
 
         projectMemberRepository.findByProjectIdAndUserId(projectId, targetUser.getId())
@@ -106,7 +106,16 @@ public class ProjectService {
         return projectMemberRepository.save(newMember);
     }
 
-    private Optional<User> findUserByUsernameOrEmail(String usernameOrEmail) {
+    @Transactional(readOnly = true)
+    public List<ProjectMember> listMembers(Long currentUserId, Long projectId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new NotFoundException("Project not found"));
+        projectMemberRepository.findByProjectIdAndUserId(projectId, currentUserId)
+                .orElseThrow(() -> new BadRequestException("User is not a member of this project"));
+        return projectMemberRepository.findByProjectId(project.getId());
+    }
+
+    private Optional<User> findUserByUsernameOrEmailOrId(String usernameOrEmail) {
         if (usernameOrEmail == null) {
             return Optional.empty();
         }
@@ -119,6 +128,15 @@ public class ProjectService {
         if (byUsername.isPresent()) {
             return byUsername;
         }
-        return userRepository.findByEmail(lookup);
+        Optional<User> byEmail = userRepository.findByEmail(lookup);
+        if (byEmail.isPresent()) {
+            return byEmail;
+        }
+        try {
+            Long id = Long.valueOf(lookup);
+            return userRepository.findById(id);
+        } catch (NumberFormatException ex) {
+            return Optional.empty();
+        }
     }
 }
