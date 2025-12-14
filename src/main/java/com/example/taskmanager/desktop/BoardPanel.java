@@ -15,11 +15,11 @@ public class BoardPanel extends JPanel {
     private final Runnable logoutAction;
     private final JLabel userLabel = new JLabel();
 
-    public BoardPanel(DesktopApiClient apiClient, Runnable logoutAction) {
+    public BoardPanel(DesktopApiClient apiClient, RealtimeUpdateClient realtimeUpdateClient, Runnable logoutAction) {
         this.apiClient = apiClient;
         this.logoutAction = logoutAction;
-        this.projectsPanel = new ProjectsListPanel(apiClient);
-        this.tasksPanel = new TasksListPanel(apiClient);
+        this.projectsPanel = new ProjectsListPanel(apiClient, realtimeUpdateClient);
+        this.tasksPanel = new TasksListPanel(apiClient, realtimeUpdateClient);
 
         setLayout(new BorderLayout());
         add(buildHeader(), BorderLayout.NORTH);
@@ -50,7 +50,6 @@ public class BoardPanel extends JPanel {
         DesktopApiClient.AuthResponse user = apiClient.getCurrentUser();
         userLabel.setText(user != null ? user.getUsername() + " (" + user.getEmail() + ")" : "");
         projectsPanel.reloadProjects();
-        projectsPanel.startAutoRefresh();
         tasksPanel.setCurrentProject(null);
     }
 }

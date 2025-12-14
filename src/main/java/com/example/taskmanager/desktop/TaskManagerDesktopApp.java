@@ -20,13 +20,16 @@ public class TaskManagerDesktopApp extends JFrame implements LoginSuccessListene
     }
 
     private final DesktopApiClient apiClient;
+    private final RealtimeUpdateClient realtimeClient;
     private final CardLayout cardLayout = new CardLayout();
     private final Container cardContainer;
     private final AuthPanel authPanel;
     private final BoardPanel boardPanel;
 
     public TaskManagerDesktopApp() {
-        this.apiClient = new DesktopApiClient("http://localhost:8081");
+        String baseUrl = "http://localhost:8081";
+        this.apiClient = new DesktopApiClient(baseUrl);
+        this.realtimeClient = new RealtimeUpdateClient(baseUrl);
         setTitle("Task Manager Desktop Client");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(1400, 700);
@@ -35,12 +38,13 @@ public class TaskManagerDesktopApp extends JFrame implements LoginSuccessListene
         this.cardContainer = getContentPane();
         cardContainer.setLayout(cardLayout);
 
-        this.boardPanel = new BoardPanel(apiClient, this::handleLogout);
+        this.boardPanel = new BoardPanel(apiClient, realtimeClient, this::handleLogout);
         this.authPanel = new AuthPanel(apiClient, this);
 
         cardContainer.add(authPanel, CARD_AUTH);
         cardContainer.add(boardPanel, CARD_BOARD);
 
+        realtimeClient.connect();
         showAuth();
     }
 

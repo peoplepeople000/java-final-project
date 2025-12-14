@@ -20,7 +20,6 @@ import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
-import javax.swing.Timer;
 import javax.swing.ListSelectionModel;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -28,6 +27,7 @@ import java.time.format.DateTimeFormatter;
 public class TasksListPanel extends JPanel {
 
     private final DesktopApiClient apiClient;
+    private final RealtimeUpdateClient realtimeClient;
     private final DefaultListModel<TaskDto> todoModel = new DefaultListModel<>();
     private final DefaultListModel<TaskDto> doingModel = new DefaultListModel<>();
     private final DefaultListModel<TaskDto> doneModel = new DefaultListModel<>();
@@ -37,15 +37,16 @@ public class TasksListPanel extends JPanel {
     private final JLabel statusLabel = new JLabel(" ");
     private final JLabel projectLabel = new JLabel("No project selected");
     private ProjectDto currentProject;
-    private final Timer refreshTimer;
     private final AtomicBoolean refreshInProgress = new AtomicBoolean(false);
     private final JPopupMenu taskMenu = new JPopupMenu();
     private final JLabel todoHeader = new JLabel("TODO (0)");
     private final JLabel doingHeader = new JLabel("DOING (0)");
     private final JLabel doneHeader = new JLabel("DONE (0)");
+    private boolean suppressSelectionEvents = false;
 
-    public TasksListPanel(DesktopApiClient apiClient) {
+    public TasksListPanel(DesktopApiClient apiClient, RealtimeUpdateClient realtimeClient) {
         this.apiClient = apiClient;
+        this.realtimeClient = realtimeClient;
         setLayout(new BorderLayout(6, 6));
         setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
 
@@ -70,8 +71,32 @@ public class TasksListPanel extends JPanel {
         add(columns, BorderLayout.CENTER);
         add(statusLabel, BorderLayout.SOUTH);
 
-        refreshTimer = new Timer(5000, e -> refreshTasks(false));
-        refreshTimer.setRepeats(true);
+        registerRealtimeUpdates();
+    }
+
+    private void registerRealtimeUpdates() {
+        if (realtimeClient == null) {
+            return;
+        }
+        realtimeClient.addTaskListener(event -> {
+            DesktopApiClient.AuthResponse current = apiClient.getCurrentUser();
+            Long currentUserId = current != null ? current.getId() : null;
+            if (event.getProjectId() == null) {
+                return;
+            }
+            if (currentUserId != null && currentUserId.equals(event.getTriggeredBy())) {
+                return;
+            }
+            if (currentProject != null && event.getProjectId().equals(currentProject.getId())) {
+                SwingUtilities.invokeLater(() -> refreshTasks(false));
+            }
+        });
+        realtimeClient.addProjectListener(event -> {
+            if ("PROJECT_DELETED".equals(event.getType()) && currentProject != null
+                    && event.getProjectId() != null && event.getProjectId().equals(currentProject.getId())) {
+                SwingUtilities.invokeLater(this::clearCurrentProject);
+            }
+        });
     }
 
     public void setCurrentProject(ProjectDto project) {
@@ -80,11 +105,9 @@ public class TasksListPanel extends JPanel {
             projectLabel.setText("No project selected");
             clearLists();
             statusLabel.setText(" ");
-            stopAutoRefresh();
         } else {
             projectLabel.setText("Project: " + project.getName());
             refreshTasks(true);
-            startAutoRefresh();
         }
     }
 
@@ -129,38 +152,15 @@ public class TasksListPanel extends JPanel {
         }.execute();
     }
 
-    public void startAutoRefresh() {
-        if (!refreshTimer.isRunning()) {
-            refreshTimer.start();
-        }
-    }
-
-    public void stopAutoRefresh() {
-        if (refreshTimer.isRunning()) {
-            refreshTimer.stop();
-        }
-    }
-
     private void openCreateDialog() {
-        stopAutoRefresh();
         if (currentProject == null) {
             JOptionPane.showMessageDialog(this, "Select a project first");
-            startAutoRefresh();
             return;
         }
         java.awt.Window owner = SwingUtilities.getWindowAncestor(this);
         CreateTaskDialog dialog = new CreateTaskDialog(apiClient, owner,
                 currentProject.getId(), currentProject.getName());
-        dialog.setOnSuccess(() -> {
-            refreshTasks(true);
-            startAutoRefresh();
-        });
-        dialog.addWindowListener(new java.awt.event.WindowAdapter() {
-            @Override
-            public void windowClosed(java.awt.event.WindowEvent e) {
-                startAutoRefresh();
-            }
-        });
+        dialog.setOnSuccess(() -> refreshTasks(true));
         dialog.setVisible(true);
     }
 
@@ -169,17 +169,9 @@ public class TasksListPanel extends JPanel {
             JOptionPane.showMessageDialog(this, "Select a task first");
             return;
         }
-        stopAutoRefresh();
         java.awt.Window owner = SwingUtilities.getWindowAncestor(this);
         EditTaskDialog dialog = new EditTaskDialog(owner, apiClient, currentProject.getId(), task, () -> {
             refreshTasks(true);
-            startAutoRefresh();
-        });
-        dialog.addWindowListener(new java.awt.event.WindowAdapter() {
-            @Override
-            public void windowClosed(java.awt.event.WindowEvent e) {
-                startAutoRefresh();
-            }
         });
         dialog.setVisible(true);
     }
@@ -193,7 +185,6 @@ public class TasksListPanel extends JPanel {
         if (confirm != JOptionPane.YES_OPTION) {
             return;
         }
-        stopAutoRefresh();
         new SwingWorker<Void, Void>() {
             @Override
             protected Void doInBackground() {
@@ -203,7 +194,6 @@ public class TasksListPanel extends JPanel {
 
             @Override
             protected void done() {
-                startAutoRefresh();
                 try {
                     get();
                     statusLabel.setText("Task deleted");
@@ -252,6 +242,17 @@ public class TasksListPanel extends JPanel {
             label.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
             return label;
         });
+        list.addListSelectionListener(e -> {
+            if (suppressSelectionEvents || e.getValueIsAdjusting()) {
+                return;
+            }
+            if (!list.isSelectionEmpty()) {
+                suppressSelectionEvents = true;
+                clearOtherSelections(list);
+                suppressSelectionEvents = false;
+            }
+        });
+
         list.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -273,6 +274,18 @@ public class TasksListPanel extends JPanel {
                 maybeShowPopup(list, e);
             }
         });
+    }
+
+    private void clearOtherSelections(JList<TaskDto> source) {
+        if (source != todoList) {
+            todoList.clearSelection();
+        }
+        if (source != doingList) {
+            doingList.clearSelection();
+        }
+        if (source != doneList) {
+            doneList.clearSelection();
+        }
     }
 
     private void maybeShowPopup(JList<TaskDto> list, MouseEvent e) {

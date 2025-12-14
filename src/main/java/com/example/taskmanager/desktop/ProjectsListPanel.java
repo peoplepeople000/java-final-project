@@ -19,8 +19,8 @@ import javax.swing.JSplitPane;
 import javax.swing.JPopupMenu;
 import javax.swing.JMenuItem;
 import javax.swing.ListSelectionModel;
+import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
-import javax.swing.Timer;
 
 public class ProjectsListPanel extends JPanel {
 
@@ -33,11 +33,12 @@ public class ProjectsListPanel extends JPanel {
     private ProjectSelectionListener selectionListener;
     private Runnable projectClearedListener;
     private final JPopupMenu projectMenu = new JPopupMenu();
-    private final Timer autoRefreshTimer;
+    private final RealtimeUpdateClient realtimeClient;
     private final AtomicBoolean refreshInProgress = new AtomicBoolean(false);
 
-    public ProjectsListPanel(DesktopApiClient apiClient) {
+    public ProjectsListPanel(DesktopApiClient apiClient, RealtimeUpdateClient realtimeClient) {
         this.apiClient = apiClient;
+        this.realtimeClient = realtimeClient;
         setLayout(new BorderLayout(6, 6));
         setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
 
@@ -145,8 +146,21 @@ public class ProjectsListPanel extends JPanel {
         add(listsPanel, BorderLayout.CENTER);
         add(statusLabel, BorderLayout.SOUTH);
 
-        autoRefreshTimer = new Timer(10000, e -> refreshProjects(false, null));
-        autoRefreshTimer.setRepeats(true);
+        registerRealtimeUpdates();
+    }
+
+    private void registerRealtimeUpdates() {
+        if (realtimeClient == null) {
+            return;
+        }
+        realtimeClient.addProjectListener(event -> {
+            DesktopApiClient.AuthResponse current = apiClient.getCurrentUser();
+            Long currentUserId = current != null ? current.getId() : null;
+            if (currentUserId != null && currentUserId.equals(event.getTriggeredBy())) {
+                return;
+            }
+            SwingUtilities.invokeLater(() -> refreshProjects(false, event.getProjectId()));
+        });
     }
 
     public void setProjectSelectionListener(ProjectSelectionListener selectionListener) {
@@ -166,19 +180,9 @@ public class ProjectsListPanel extends JPanel {
     }
 
     private void openCreateDialog() {
-        stopAutoRefresh();
         java.awt.Window owner = javax.swing.SwingUtilities.getWindowAncestor(this);
         CreateProjectDialog dialog = new CreateProjectDialog(apiClient, owner);
-        dialog.setOnSuccess((Runnable) () -> {
-            refreshProjects(true, null);
-            startAutoRefresh();
-        });
-        dialog.addWindowListener(new java.awt.event.WindowAdapter() {
-            @Override
-            public void windowClosed(java.awt.event.WindowEvent e) {
-                startAutoRefresh();
-            }
-        });
+        dialog.setOnSuccess((Runnable) () -> refreshProjects(true, null));
         dialog.setVisible(true);
     }
 
@@ -226,17 +230,10 @@ public class ProjectsListPanel extends JPanel {
             statusLabel.setText("Only the project owner can manage members");
             return;
         }
-        stopAutoRefresh();
         java.awt.Window owner = javax.swing.SwingUtilities.getWindowAncestor(this);
         EditProjectDialog dialog = new EditProjectDialog(owner, apiClient, selected, () -> {
             refreshProjects(true, selected.getId());
             loadMembersForSelected();
-        });
-        dialog.addWindowListener(new java.awt.event.WindowAdapter() {
-            @Override
-            public void windowClosed(java.awt.event.WindowEvent e) {
-                startAutoRefresh();
-            }
         });
         dialog.setVisible(true);
     }
@@ -369,15 +366,4 @@ public class ProjectsListPanel extends JPanel {
         }.execute();
     }
 
-    public void startAutoRefresh() {
-        if (!autoRefreshTimer.isRunning()) {
-            autoRefreshTimer.start();
-        }
-    }
-
-    public void stopAutoRefresh() {
-        if (autoRefreshTimer.isRunning()) {
-            autoRefreshTimer.stop();
-        }
-    }
 }

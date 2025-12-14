@@ -5,6 +5,7 @@ import com.example.taskmanager.exception.NotFoundException;
 import com.example.taskmanager.model.entity.Project;
 import com.example.taskmanager.model.entity.Task;
 import com.example.taskmanager.model.entity.User;
+import com.example.taskmanager.model.event.TaskEvent;
 import com.example.taskmanager.repository.ProjectMemberRepository;
 import com.example.taskmanager.repository.ProjectRepository;
 import com.example.taskmanager.repository.TaskRepository;
@@ -14,6 +15,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,15 +33,18 @@ public class TaskService {
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository projectMemberRepository;
     private final UserRepository userRepository;
+    private final SimpMessagingTemplate messagingTemplate;
 
     public TaskService(TaskRepository taskRepository,
             ProjectRepository projectRepository,
             ProjectMemberRepository projectMemberRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            SimpMessagingTemplate messagingTemplate) {
         this.taskRepository = taskRepository;
         this.projectRepository = projectRepository;
         this.projectMemberRepository = projectMemberRepository;
         this.userRepository = userRepository;
+        this.messagingTemplate = messagingTemplate;
     }
 
     @Transactional
@@ -67,7 +72,9 @@ public class TaskService {
         task.setAssignee(assignee);
         task.setDueDate(dueDate);
 
-        return taskRepository.save(task);
+        Task savedTask = taskRepository.save(task);
+        publishTaskEvent("TASK_CREATED", projectId, savedTask.getId(), currentUserId);
+        return savedTask;
     }
 
     @Transactional(readOnly = true)
@@ -123,15 +130,19 @@ public class TaskService {
             task.setDueDate(dueDate);
         }
 
-        return taskRepository.save(task);
+        Task updated = taskRepository.save(task);
+        publishTaskEvent("TASK_UPDATED", task.getProject().getId(), task.getId(), currentUserId);
+        return updated;
     }
 
     @Transactional
     public void deleteTask(Long currentUserId, Long taskId) {
         Task task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new NotFoundException("Task not found"));
-        ensureProjectMembership(task.getProject().getId(), currentUserId);
+        Long projectId = task.getProject().getId();
+        ensureProjectMembership(projectId, currentUserId);
         taskRepository.delete(task);
+        publishTaskEvent("TASK_DELETED", projectId, task.getId(), currentUserId);
     }
 
     private void ensureProjectMembership(Long projectId, Long userId) {
@@ -158,5 +169,11 @@ public class TaskService {
             throw new BadRequestException("Invalid status. Allowed values: TODO, DOING, DONE");
         }
         return upper;
+    }
+
+    private void publishTaskEvent(String type, Long projectId, Long taskId, Long triggeredBy) {
+        if (messagingTemplate != null) {
+            messagingTemplate.convertAndSend("/topic/tasks", new TaskEvent(type, projectId, taskId, triggeredBy));
+        }
     }
 }

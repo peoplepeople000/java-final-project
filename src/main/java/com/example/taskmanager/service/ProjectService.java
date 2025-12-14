@@ -5,6 +5,7 @@ import com.example.taskmanager.exception.NotFoundException;
 import com.example.taskmanager.model.entity.Project;
 import com.example.taskmanager.model.entity.ProjectMember;
 import com.example.taskmanager.model.entity.User;
+import com.example.taskmanager.model.event.ProjectEvent;
 import com.example.taskmanager.repository.TaskRepository;
 import com.example.taskmanager.repository.ProjectMemberRepository;
 import com.example.taskmanager.repository.ProjectRepository;
@@ -15,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,15 +30,18 @@ public class ProjectService {
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository projectMemberRepository;
     private final TaskRepository taskRepository;
+    private final SimpMessagingTemplate messagingTemplate;
 
     public ProjectService(UserRepository userRepository,
             ProjectRepository projectRepository,
             ProjectMemberRepository projectMemberRepository,
-            TaskRepository taskRepository) {
+            TaskRepository taskRepository,
+            SimpMessagingTemplate messagingTemplate) {
         this.userRepository = userRepository;
         this.projectRepository = projectRepository;
         this.projectMemberRepository = projectMemberRepository;
         this.taskRepository = taskRepository;
+        this.messagingTemplate = messagingTemplate;
     }
 
     @Transactional
@@ -57,6 +62,7 @@ public class ProjectService {
         ownerMember.setJoinedAt(LocalDateTime.now());
         projectMemberRepository.save(ownerMember);
 
+        publishProjectEvent("PROJECT_CREATED", savedProject.getId(), currentUserId);
         return savedProject;
     }
 
@@ -107,7 +113,9 @@ public class ProjectService {
         newMember.setUser(targetUser);
         newMember.setRole(ROLE_MEMBER);
         newMember.setJoinedAt(LocalDateTime.now());
-        return projectMemberRepository.save(newMember);
+        ProjectMember saved = projectMemberRepository.save(newMember);
+        publishProjectEvent("PROJECT_MEMBER_ADDED", projectId, currentUserId);
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -162,6 +170,7 @@ public class ProjectService {
 
         // TODO: if tasks assigned to this user in the project, consider unassigning them.
         projectMemberRepository.deleteByProjectIdAndUserId(projectId, userIdToRemove);
+        publishProjectEvent("PROJECT_MEMBER_REMOVED", projectId, currentUserId);
     }
 
     @Transactional
@@ -177,6 +186,7 @@ public class ProjectService {
         taskRepository.deleteByProjectId(projectId);
         projectMemberRepository.deleteByProjectId(projectId);
         projectRepository.delete(project);
+        publishProjectEvent("PROJECT_DELETED", projectId, currentUserId);
     }
 
     @Transactional
@@ -191,6 +201,14 @@ public class ProjectService {
         }
         project.setName(name.trim());
         project.setDescription(description);
-        return projectRepository.save(project);
+        Project updated = projectRepository.save(project);
+        publishProjectEvent("PROJECT_UPDATED", projectId, currentUserId);
+        return updated;
+    }
+
+    private void publishProjectEvent(String type, Long projectId, Long triggeredBy) {
+        if (messagingTemplate != null) {
+            messagingTemplate.convertAndSend("/topic/projects", new ProjectEvent(type, projectId, triggeredBy));
+        }
     }
 }
