@@ -4,6 +4,8 @@ import com.example.taskmanager.desktop.DesktopApiClient.MemberDto;
 import com.example.taskmanager.desktop.DesktopApiClient.ProjectDto;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.List;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
@@ -12,6 +14,8 @@ import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JPopupMenu;
+import javax.swing.JMenuItem;
 import javax.swing.ListSelectionModel;
 import javax.swing.SwingWorker;
 
@@ -25,6 +29,7 @@ public class ProjectsListPanel extends JPanel {
     private final JLabel statusLabel = new JLabel(" ");
     private ProjectSelectionListener selectionListener;
     private Runnable projectClearedListener;
+    private final JPopupMenu projectMenu = new JPopupMenu();
 
     public ProjectsListPanel(DesktopApiClient apiClient) {
         this.apiClient = apiClient;
@@ -89,6 +94,38 @@ public class ProjectsListPanel extends JPanel {
         });
 
         statusLabel.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
+        initProjectMenu();
+        projectList.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && projectList.getSelectedValue() != null) {
+                    openEditDialog();
+                }
+            }
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                maybeShowPopup(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                maybeShowPopup(e);
+            }
+
+            private void maybeShowPopup(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    int idx = projectList.locationToIndex(e.getPoint());
+                    if (idx >= 0) {
+                        projectList.setSelectedIndex(idx);
+                        ProjectDto p = projectList.getSelectedValue();
+                        if (p != null && isOwner(p)) {
+                            projectMenu.show(projectList, e.getX(), e.getY());
+                        }
+                    }
+                }
+            }
+        });
 
         JPanel listsPanel = new JPanel(new BorderLayout(6, 6));
         listsPanel.add(new JScrollPane(projectList), BorderLayout.CENTER);
@@ -208,8 +245,7 @@ public class ProjectsListPanel extends JPanel {
 
     private void openEditDialog() {
         ProjectDto selected = projectList.getSelectedValue();
-        DesktopApiClient.AuthResponse user = apiClient.getCurrentUser();
-        if (selected == null || user == null || !selected.getOwnerId().equals(user.getId())) {
+        if (selected == null || !isOwner(selected)) {
             statusLabel.setText("Only the project owner can manage members");
             return;
         }
@@ -255,5 +291,20 @@ public class ProjectsListPanel extends JPanel {
         }
         String msg = ex.getMessage();
         return (msg == null || msg.trim().isEmpty()) ? ex.toString() : msg;
+    }
+
+    private boolean isOwner(ProjectDto project) {
+        DesktopApiClient.AuthResponse user = apiClient.getCurrentUser();
+        return project != null && user != null && project.getOwnerId() != null
+                && project.getOwnerId().equals(user.getId());
+    }
+
+    private void initProjectMenu() {
+        JMenuItem editItem = new JMenuItem("Edit Project");
+        editItem.addActionListener(e -> openEditDialog());
+        JMenuItem deleteItem = new JMenuItem("Delete Project");
+        deleteItem.addActionListener(e -> deleteSelectedProject());
+        projectMenu.add(editItem);
+        projectMenu.add(deleteItem);
     }
 }

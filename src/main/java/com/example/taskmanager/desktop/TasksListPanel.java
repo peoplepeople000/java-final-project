@@ -17,6 +17,8 @@ import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JMenuItem;
+import javax.swing.JPopupMenu;
 import javax.swing.Timer;
 import javax.swing.SwingWorker;
 import javax.swing.ListSelectionModel;
@@ -32,6 +34,7 @@ public class TasksListPanel extends JPanel {
     private ProjectDto currentProject;
     private final Timer refreshTimer;
     private final AtomicBoolean refreshInProgress = new AtomicBoolean(false);
+    private final JPopupMenu taskMenu = new JPopupMenu();
 
     public TasksListPanel(DesktopApiClient apiClient) {
         this.apiClient = apiClient;
@@ -88,7 +91,30 @@ public class TasksListPanel extends JPanel {
                     openEditDialog();
                 }
             }
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                maybeShowPopup(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                maybeShowPopup(e);
+            }
+
+            private void maybeShowPopup(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    int idx = list.locationToIndex(e.getPoint());
+                    if (idx >= 0) {
+                        list.setSelectedIndex(idx);
+                        if (list.getSelectedValue() != null) {
+                            taskMenu.show(list, e.getX(), e.getY());
+                        }
+                    }
+                }
+            }
         });
+        initTaskMenu();
 
         statusLabel.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
 
@@ -129,7 +155,10 @@ public class TasksListPanel extends JPanel {
             }
             return;
         }
-        refreshInProgress.set(true);
+        // prevent overlapping refresh calls
+        if (!refreshInProgress.compareAndSet(false, true)) {
+            return;
+        }
         Long selectedId = null;
         TaskDto selectedTask = list.getSelectedValue();
         if (selectedTask != null) {
@@ -292,5 +321,52 @@ public class TasksListPanel extends JPanel {
         }
         String msg = ex.getMessage();
         return (msg == null || msg.trim().isEmpty()) ? ex.toString() : msg;
+    }
+
+    private void initTaskMenu() {
+        JMenuItem editItem = new JMenuItem("Edit Task");
+        editItem.addActionListener(e -> openEditDialog());
+
+        JMenuItem todoItem = new JMenuItem("Move to TODO");
+        todoItem.addActionListener(e -> moveStatus("TODO"));
+        JMenuItem doingItem = new JMenuItem("Move to DOING");
+        doingItem.addActionListener(e -> moveStatus("DOING"));
+        JMenuItem doneItem = new JMenuItem("Move to DONE");
+        doneItem.addActionListener(e -> moveStatus("DONE"));
+
+        JMenuItem deleteItem = new JMenuItem("Delete Task");
+        deleteItem.addActionListener(e -> deleteSelected());
+
+        taskMenu.add(editItem);
+        taskMenu.addSeparator();
+        taskMenu.add(todoItem);
+        taskMenu.add(doingItem);
+        taskMenu.add(doneItem);
+        taskMenu.addSeparator();
+        taskMenu.add(deleteItem);
+    }
+
+    private void moveStatus(String status) {
+        TaskDto selected = list.getSelectedValue();
+        if (selected == null) {
+            return;
+        }
+        new SwingWorker<TaskDto, Void>() {
+            @Override
+            protected TaskDto doInBackground() {
+                return apiClient.updateTaskStatus(selected.getId(), status);
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    get();
+                    statusLabel.setText("Status updated");
+                    refreshTasks(true);
+                } catch (Exception ex) {
+                    statusLabel.setText("Update failed: " + describeError(ex));
+                }
+            }
+        }.execute();
     }
 }
