@@ -1,7 +1,7 @@
 package com.example.taskmanager.desktop;
 
-import com.example.taskmanager.desktop.DesktopApiClient.ProjectDto;
 import com.example.taskmanager.desktop.DesktopApiClient.MemberDto;
+import com.example.taskmanager.desktop.DesktopApiClient.ProjectDto;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.util.List;
@@ -64,18 +64,18 @@ public class ProjectsListPanel extends JPanel {
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT));
         JButton refreshBtn = new JButton("Refresh");
         JButton addBtn = new JButton("+ Project");
-        JButton membersBtn = new JButton("Members");
+        JButton editProjectBtn = new JButton("Edit Project");
         JButton deleteBtn = new JButton("Delete Project");
-        membersBtn.setEnabled(false);
+        editProjectBtn.setEnabled(false);
         deleteBtn.setEnabled(false);
         toolbar.add(refreshBtn);
         toolbar.add(addBtn);
-        toolbar.add(membersBtn);
+        toolbar.add(editProjectBtn);
         toolbar.add(deleteBtn);
 
         refreshBtn.addActionListener(e -> reloadProjects());
         addBtn.addActionListener(e -> openCreateDialog());
-        membersBtn.addActionListener(e -> openMembersDialog());
+        editProjectBtn.addActionListener(e -> openEditDialog());
         deleteBtn.addActionListener(e -> deleteSelectedProject());
 
         projectList.addListSelectionListener(e -> {
@@ -84,7 +84,7 @@ public class ProjectsListPanel extends JPanel {
                 DesktopApiClient.AuthResponse user = apiClient.getCurrentUser();
                 boolean owner = selected != null && user != null && selected.getOwnerId() != null
                         && selected.getOwnerId().equals(user.getId());
-                membersBtn.setEnabled(selected != null && owner);
+                editProjectBtn.setEnabled(selected != null && owner);
                 deleteBtn.setEnabled(selected != null && owner);
                 loadMembersForSelected();
                 if (selectionListener != null) {
@@ -98,7 +98,10 @@ public class ProjectsListPanel extends JPanel {
         JPanel listsPanel = new JPanel(new BorderLayout(6, 6));
         listsPanel.add(new JScrollPane(projectList), BorderLayout.CENTER);
         JPanel membersPanel = new JPanel(new BorderLayout());
-        membersPanel.add(new JLabel("Members"), BorderLayout.NORTH);
+        JPanel membersHeader = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        membersHeader.add(new JLabel("Members"));
+        membersHeader.add(editProjectBtn);
+        membersPanel.add(membersHeader, BorderLayout.NORTH);
         membersPanel.add(new JScrollPane(membersList), BorderLayout.CENTER);
         listsPanel.add(membersPanel, BorderLayout.SOUTH);
 
@@ -116,6 +119,10 @@ public class ProjectsListPanel extends JPanel {
     }
 
     public void reloadProjects() {
+        reloadProjects(null);
+    }
+
+    public void reloadProjects(Long selectProjectId) {
         new SwingWorker<List<ProjectDto>, Void>() {
             @Override
             protected List<ProjectDto> doInBackground() {
@@ -131,11 +138,30 @@ public class ProjectsListPanel extends JPanel {
                         projectModel.addElement(p);
                     }
                     statusLabel.setText("Loaded " + projects.size() + " projects");
-                    if (!projects.isEmpty()) {
-                        projectList.setSelectedIndex(0);
-                    } else {
+                    if (projects.isEmpty()) {
                         membersModel.clear();
+                        if (selectionListener != null) {
+                            selectionListener.onProjectSelected(null);
+                        }
+                        if (projectClearedListener != null) {
+                            projectClearedListener.run();
+                        }
+                        return;
                     }
+                    if (selectProjectId != null) {
+                        int idx = -1;
+                        for (int i = 0; i < projectModel.size(); i++) {
+                            if (selectProjectId.equals(projectModel.get(i).getId())) {
+                                idx = i;
+                                break;
+                            }
+                        }
+                        if (idx >= 0) {
+                            projectList.setSelectedIndex(idx);
+                            return;
+                        }
+                    }
+                    projectList.setSelectedIndex(0);
                 } catch (Exception ex) {
                     statusLabel.setText("Load failed: " + describeError(ex));
                 }
@@ -146,7 +172,7 @@ public class ProjectsListPanel extends JPanel {
     private void openCreateDialog() {
         java.awt.Window owner = javax.swing.SwingUtilities.getWindowAncestor(this);
         CreateProjectDialog dialog = new CreateProjectDialog(apiClient, owner);
-        dialog.setOnSuccess(this::reloadProjects);
+        dialog.setOnSuccess((Runnable) this::reloadProjects);
         dialog.setVisible(true);
     }
 
@@ -188,7 +214,7 @@ public class ProjectsListPanel extends JPanel {
         }.execute();
     }
 
-    private void openMembersDialog() {
+    private void openEditDialog() {
         ProjectDto selected = projectList.getSelectedValue();
         DesktopApiClient.AuthResponse user = apiClient.getCurrentUser();
         if (selected == null || user == null || !selected.getOwnerId().equals(user.getId())) {
@@ -196,13 +222,9 @@ public class ProjectsListPanel extends JPanel {
             return;
         }
         java.awt.Window owner = javax.swing.SwingUtilities.getWindowAncestor(this);
-        ManageMembersDialog dialog = new ManageMembersDialog(apiClient, owner, selected.getId(), selected.getOwnerId(),
-                selected.getName());
-        dialog.addWindowListener(new java.awt.event.WindowAdapter() {
-            @Override
-            public void windowClosed(java.awt.event.WindowEvent e) {
-                loadMembersForSelected();
-            }
+        EditProjectDialog dialog = new EditProjectDialog(owner, apiClient, selected, () -> {
+            reloadProjects(selected.getId());
+            loadMembersForSelected();
         });
         dialog.setVisible(true);
     }
@@ -224,8 +246,8 @@ public class ProjectsListPanel extends JPanel {
                 try {
                     List<MemberDto> members = get();
                     membersModel.clear();
-                    for (MemberDto u : members) {
-                        membersModel.addElement(u);
+                    for (MemberDto m : members) {
+                        membersModel.addElement(m);
                     }
                 } catch (Exception ex) {
                     statusLabel.setText("Members load failed: " + describeError(ex));

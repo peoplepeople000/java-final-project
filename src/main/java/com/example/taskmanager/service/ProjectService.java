@@ -178,4 +178,19 @@ public class ProjectService {
         projectMemberRepository.deleteByProjectId(projectId);
         projectRepository.delete(project);
     }
+
+    @Transactional
+    public Project updateProject(Long currentUserId, Long projectId, String name, String description) {
+        if (name == null || name.trim().isEmpty()) {
+            throw new BadRequestException("Project name is required");
+        }
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new NotFoundException("Project not found"));
+        if (!project.getOwner().getId().equals(currentUserId)) {
+            throw new BadRequestException("Only project owner can update project");
+        }
+        project.setName(name.trim());
+        project.setDescription(description);
+        return projectRepository.save(project);
+    }
 }

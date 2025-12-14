@@ -161,6 +161,23 @@ public class CreateProjectDialog extends JDialog {
                     for (UserDto u : users) {
                         addCombo.addItem(u);
                     }
+                     // Preselect owner in members list
+                    DesktopApiClient.AuthResponse current = apiClient.getCurrentUser();
+                    if (current != null) {
+                        boolean exists = false;
+                        for (int i = 0; i < membersModel.size(); i++) {
+                            if (current.getId() != null && current.getId().equals(membersModel.get(i).getUserId())) {
+                                exists = true;
+                                break;
+                            }
+                        }
+                        if (!exists) {
+                            MemberDto ownerMember = new MemberDto();
+                            ownerMember.setUserId(current.getId());
+                            ownerMember.setUsername(current.getUsername());
+                            membersModel.addElement(ownerMember);
+                        }
+                    }
                     statusLabel.setText("Users loaded");
                 } catch (Exception ex) {
                     statusLabel.setText("Failed to load users: " + describeError(ex));

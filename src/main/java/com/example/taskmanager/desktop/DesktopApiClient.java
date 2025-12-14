@@ -121,6 +121,14 @@ public class DesktopApiClient {
                 new ParameterizedTypeReference<Void>() {});
     }
 
+    public ProjectDto updateProject(Long projectId, String name, String description) {
+        ProjectUpdateRequest request = new ProjectUpdateRequest();
+        request.setName(name);
+        request.setDescription(description);
+        return exchangeWithAuth("/api/projects/" + projectId, HttpMethod.PATCH, request,
+                new ParameterizedTypeReference<ProjectDto>() {});
+    }
+
     private <T> T post(String path, Object payload, Class<T> responseType) {
         try {
             HttpHeaders headers = new HttpHeaders();
@@ -521,6 +529,27 @@ public class DesktopApiClient {
     }
 
     private static class ProjectCreateRequest {
+        private String name;
+        private String description;
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public String getDescription() {
+            return description;
+        }
+
+        public void setDescription(String description) {
+            this.description = description;
+        }
+    }
+
+    private static class ProjectUpdateRequest {
         private String name;
         private String description;
 

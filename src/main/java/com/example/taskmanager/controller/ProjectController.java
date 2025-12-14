@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PatchMapping;
 
 @RestController
 @RequestMapping("/api/projects")
@@ -89,6 +90,17 @@ public class ProjectController {
         Long currentUserId = parseUserId(userIdHeader);
         projectService.deleteProject(currentUserId, projectId);
         return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{projectId}")
+    public ResponseEntity<ProjectResponse> updateProject(
+            @RequestHeader(value = "X-USER-ID", required = false) String userIdHeader,
+            @PathVariable Long projectId,
+            @Valid @RequestBody com.example.taskmanager.model.dto.project.UpdateProjectRequest request) {
+        Long currentUserId = parseUserId(userIdHeader);
+        Project updated = projectService.updateProject(currentUserId, projectId, request.getName(),
+                request.getDescription());
+        return ResponseEntity.ok(ProjectResponse.from(updated));
     }
 
     private Long parseUserId(String userIdHeader) {
