@@ -29,7 +29,7 @@ public class TaskManagerDesktopApp extends JFrame implements LoginSuccessListene
         this.apiClient = new DesktopApiClient("http://localhost:8081");
         setTitle("Task Manager Desktop Client");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1000, 700);
+        setSize(1400, 700);
         setLocationRelativeTo(null);
 
         this.cardContainer = getContentPane();

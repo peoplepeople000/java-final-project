@@ -5,17 +5,17 @@ import com.example.taskmanager.desktop.DesktopApiClient.ProjectDto;
 import com.example.taskmanager.desktop.DesktopApiClient.UserDto;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
-import java.awt.FlowLayout;
 import java.awt.Insets;
 import java.awt.Window;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 import javax.swing.BorderFactory;
+import javax.swing.BoxLayout;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
 import javax.swing.JDialog;
@@ -32,7 +32,7 @@ public class CreateProjectDialog extends JDialog {
 
     private final DesktopApiClient apiClient;
     private final JTextField nameField = new JTextField();
-    private final JTextArea descriptionField = new JTextArea(3, 20);
+    private final JTextArea descriptionField = new JTextArea(4, 30);
     private final DefaultListModel<MemberDto> membersModel = new DefaultListModel<>();
     private final JList<MemberDto> membersList = new JList<>(membersModel);
     private final JComboBox<UserDto> addCombo = new JComboBox<>();
@@ -44,8 +44,11 @@ public class CreateProjectDialog extends JDialog {
     public CreateProjectDialog(DesktopApiClient apiClient, Window owner) {
         super(owner, "Create Project", ModalityType.APPLICATION_MODAL);
         this.apiClient = apiClient;
-        setLayout(new BorderLayout(6, 6));
+        setLayout(new BorderLayout(8, 8));
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+        setPreferredSize(new Dimension(520, 520));
+        nameField.setColumns(30);
+        descriptionField.setColumns(30);
         buildUi();
         setMinimumSize(new Dimension(520, 520));
         pack();
@@ -54,35 +57,37 @@ public class CreateProjectDialog extends JDialog {
     }
 
     private void buildUi() {
-        JPanel form = new JPanel(new GridBagLayout());
+        JPanel main = new JPanel();
+        main.setLayout(new BoxLayout(main, BoxLayout.Y_AXIS));
+
+        // Project details section
+        JPanel details = new JPanel(new GridBagLayout());
+        details.setBorder(BorderFactory.createTitledBorder("Project Details"));
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(5, 5, 5, 5);
         gbc.fill = GridBagConstraints.HORIZONTAL;
-
         gbc.gridx = 0;
         gbc.gridy = 0;
-        form.add(new JLabel("Name"), gbc);
+        details.add(new JLabel("Name"), gbc);
         gbc.gridx = 1;
         gbc.weightx = 1;
-        form.add(nameField, gbc);
+        details.add(nameField, gbc);
 
         gbc.gridx = 0;
         gbc.gridy++;
         gbc.weightx = 0;
-        form.add(new JLabel("Description"), gbc);
+        details.add(new JLabel("Description"), gbc);
         gbc.gridx = 1;
         gbc.weightx = 1;
         descriptionField.setLineWrap(true);
         descriptionField.setWrapStyleWord(true);
-        form.add(descriptionField, gbc);
+        JScrollPane descScroll = new JScrollPane(descriptionField);
+        descScroll.setPreferredSize(descriptionField.getPreferredSize());
+        details.add(descScroll, gbc);
 
-        gbc.gridx = 0;
-        gbc.gridy++;
-        gbc.weightx = 0;
-        gbc.anchor = GridBagConstraints.NORTHWEST;
-        form.add(new JLabel("Members"), gbc);
-        gbc.gridx = 1;
-        gbc.weightx = 1;
+        // Members section
+        JPanel membersPanel = new JPanel(new BorderLayout(4, 4));
+        membersPanel.setBorder(BorderFactory.createTitledBorder("Members"));
 
         addCombo.setRenderer((list, value, index, isSelected, cellHasFocus) -> {
             JLabel label = new JLabel();
@@ -113,22 +118,22 @@ public class CreateProjectDialog extends JDialog {
         });
         membersList.setSelectionMode(javax.swing.ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 
-        JPanel memberControls = new JPanel(new BorderLayout(4, 4));
         JPanel addRow = new JPanel(new BorderLayout(4, 4));
         addRow.add(addCombo, BorderLayout.CENTER);
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
         buttons.add(addBtn);
         buttons.add(removeBtn);
         addRow.add(buttons, BorderLayout.EAST);
-        memberControls.add(addRow, BorderLayout.NORTH);
-        memberControls.add(new JScrollPane(membersList), BorderLayout.CENTER);
-        form.add(memberControls, gbc);
+        membersPanel.add(addRow, BorderLayout.NORTH);
+        membersPanel.add(new JScrollPane(membersList), BorderLayout.CENTER);
 
-        JPanel actions = new JPanel();
+        // Action section (Create)
+        JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        actionPanel.setBorder(BorderFactory.createTitledBorder("Create Project"));
+        JButton createBtn = new JButton("Create Project");
         JButton cancelBtn = new JButton("Cancel");
-        JButton createBtn = new JButton("Create");
-        actions.add(cancelBtn);
-        actions.add(createBtn);
+        actionPanel.add(createBtn);
+        actionPanel.add(cancelBtn);
 
         cancelBtn.addActionListener(e -> dispose());
         createBtn.addActionListener(e -> submit(createBtn));
@@ -143,9 +148,12 @@ public class CreateProjectDialog extends JDialog {
 
         statusLabel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
 
-        add(form, BorderLayout.CENTER);
-        add(actions, BorderLayout.SOUTH);
-        add(statusLabel, BorderLayout.NORTH);
+        main.add(details);
+        main.add(membersPanel);
+        main.add(actionPanel);
+
+        add(main, BorderLayout.CENTER);
+        add(statusLabel, BorderLayout.SOUTH);
     }
 
     private void loadUsers() {

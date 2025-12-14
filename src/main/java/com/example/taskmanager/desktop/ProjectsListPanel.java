@@ -4,7 +4,10 @@ import com.example.taskmanager.desktop.DesktopApiClient.MemberDto;
 import com.example.taskmanager.desktop.DesktopApiClient.ProjectDto;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
@@ -13,8 +16,11 @@ import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
+import javax.swing.JPopupMenu;
+import javax.swing.JMenuItem;
 import javax.swing.ListSelectionModel;
 import javax.swing.SwingWorker;
+import javax.swing.Timer;
 
 public class ProjectsListPanel extends JPanel {
 
@@ -26,6 +32,9 @@ public class ProjectsListPanel extends JPanel {
     private final JLabel statusLabel = new JLabel(" ");
     private ProjectSelectionListener selectionListener;
     private Runnable projectClearedListener;
+    private final JPopupMenu projectMenu = new JPopupMenu();
+    private final Timer autoRefreshTimer;
+    private final AtomicBoolean refreshInProgress = new AtomicBoolean(false);
 
     public ProjectsListPanel(DesktopApiClient apiClient) {
         this.apiClient = apiClient;
@@ -65,15 +74,12 @@ public class ProjectsListPanel extends JPanel {
         });
 
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        JButton refreshBtn = new JButton("Refresh");
         JButton addBtn = new JButton("+ Project");
         JButton editProjectBtn = new JButton("Edit Project");
         editProjectBtn.setEnabled(false);
-        toolbar.add(refreshBtn);
         toolbar.add(addBtn);
         toolbar.add(editProjectBtn);
 
-        refreshBtn.addActionListener(e -> reloadProjects());
         addBtn.addActionListener(e -> openCreateDialog());
         editProjectBtn.addActionListener(e -> openEditDialog());
 
@@ -92,6 +98,38 @@ public class ProjectsListPanel extends JPanel {
         });
 
         statusLabel.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
+        initProjectMenu();
+        projectList.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && projectList.getSelectedValue() != null) {
+                    openEditDialog();
+                }
+            }
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                maybeShowPopup(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                maybeShowPopup(e);
+            }
+
+            private void maybeShowPopup(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    int idx = projectList.locationToIndex(e.getPoint());
+                    if (idx >= 0) {
+                        projectList.setSelectedIndex(idx);
+                        ProjectDto p = projectList.getSelectedValue();
+                        if (p != null && isOwner(p)) {
+                            projectMenu.show(projectList, e.getX(), e.getY());
+                        }
+                    }
+                }
+            }
+        });
 
         JPanel listsPanel = new JPanel(new BorderLayout(6, 6));
         JScrollPane projectScroll = new JScrollPane(projectList);
@@ -106,6 +144,9 @@ public class ProjectsListPanel extends JPanel {
         add(toolbar, BorderLayout.NORTH);
         add(listsPanel, BorderLayout.CENTER);
         add(statusLabel, BorderLayout.SOUTH);
+
+        autoRefreshTimer = new Timer(10000, e -> refreshProjects(false, null));
+        autoRefreshTimer.setRepeats(true);
     }
 
     public void setProjectSelectionListener(ProjectSelectionListener selectionListener) {
@@ -117,60 +158,27 @@ public class ProjectsListPanel extends JPanel {
     }
 
     public void reloadProjects() {
-        reloadProjects(null);
+        refreshProjects(true, null);
     }
 
     public void reloadProjects(Long selectProjectId) {
-        new SwingWorker<List<ProjectDto>, Void>() {
-            @Override
-            protected List<ProjectDto> doInBackground() {
-                return apiClient.listProjects();
-            }
-
-            @Override
-            protected void done() {
-                try {
-                    List<ProjectDto> projects = get();
-                    projectModel.clear();
-                    for (ProjectDto p : projects) {
-                        projectModel.addElement(p);
-                    }
-                    statusLabel.setText("Loaded " + projects.size() + " projects");
-                    if (projects.isEmpty()) {
-                        membersModel.clear();
-                        if (selectionListener != null) {
-                            selectionListener.onProjectSelected(null);
-                        }
-                        if (projectClearedListener != null) {
-                            projectClearedListener.run();
-                        }
-                        return;
-                    }
-                    if (selectProjectId != null) {
-                        int idx = -1;
-                        for (int i = 0; i < projectModel.size(); i++) {
-                            if (selectProjectId.equals(projectModel.get(i).getId())) {
-                                idx = i;
-                                break;
-                            }
-                        }
-                        if (idx >= 0) {
-                            projectList.setSelectedIndex(idx);
-                            return;
-                        }
-                    }
-                    projectList.setSelectedIndex(0);
-                } catch (Exception ex) {
-                    statusLabel.setText("Load failed: " + describeError(ex));
-                }
-            }
-        }.execute();
+        refreshProjects(true, selectProjectId);
     }
 
     private void openCreateDialog() {
+        stopAutoRefresh();
         java.awt.Window owner = javax.swing.SwingUtilities.getWindowAncestor(this);
         CreateProjectDialog dialog = new CreateProjectDialog(apiClient, owner);
-        dialog.setOnSuccess((Runnable) this::reloadProjects);
+        dialog.setOnSuccess((Runnable) () -> {
+            refreshProjects(true, null);
+            startAutoRefresh();
+        });
+        dialog.addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosed(java.awt.event.WindowEvent e) {
+                startAutoRefresh();
+            }
+        });
         dialog.setVisible(true);
     }
 
@@ -214,15 +222,21 @@ public class ProjectsListPanel extends JPanel {
 
     private void openEditDialog() {
         ProjectDto selected = projectList.getSelectedValue();
-        DesktopApiClient.AuthResponse user = apiClient.getCurrentUser();
-        if (selected == null || user == null || !selected.getOwnerId().equals(user.getId())) {
+        if (selected == null || !isOwner(selected)) {
             statusLabel.setText("Only the project owner can manage members");
             return;
         }
+        stopAutoRefresh();
         java.awt.Window owner = javax.swing.SwingUtilities.getWindowAncestor(this);
         EditProjectDialog dialog = new EditProjectDialog(owner, apiClient, selected, () -> {
-            reloadProjects(selected.getId());
+            refreshProjects(true, selected.getId());
             loadMembersForSelected();
+        });
+        dialog.addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosed(java.awt.event.WindowEvent e) {
+                startAutoRefresh();
+            }
         });
         dialog.setVisible(true);
     }
@@ -261,5 +275,109 @@ public class ProjectsListPanel extends JPanel {
         }
         String msg = ex.getMessage();
         return (msg == null || msg.trim().isEmpty()) ? ex.toString() : msg;
+    }
+
+    private boolean isOwner(ProjectDto project) {
+        DesktopApiClient.AuthResponse user = apiClient.getCurrentUser();
+        return project != null && user != null && project.getOwnerId() != null
+                && project.getOwnerId().equals(user.getId());
+    }
+
+    private void initProjectMenu() {
+        JMenuItem editItem = new JMenuItem("Edit Project");
+        editItem.addActionListener(e -> openEditDialog());
+        JMenuItem deleteItem = new JMenuItem("Delete Project");
+        deleteItem.addActionListener(e -> deleteSelectedProject());
+        projectMenu.add(editItem);
+        projectMenu.add(deleteItem);
+    }
+
+    private void refreshProjects(boolean showErrors, Long selectProjectId) {
+        if (!refreshInProgress.compareAndSet(false, true)) {
+            return;
+        }
+        Long preserveId = selectProjectId;
+        if (preserveId == null) {
+            ProjectDto sel = projectList.getSelectedValue();
+            preserveId = sel != null ? sel.getId() : null;
+        }
+        final Long targetId = preserveId;
+        new SwingWorker<List<ProjectDto>, Void>() {
+            @Override
+            protected List<ProjectDto> doInBackground() {
+                if (apiClient.getCurrentUser() == null) {
+                    return java.util.Collections.emptyList();
+                }
+                return apiClient.listProjects();
+            }
+
+            @Override
+            protected void done() {
+                refreshInProgress.set(false);
+                try {
+                    List<ProjectDto> projects = get();
+                    projectModel.clear();
+                    for (ProjectDto p : projects) {
+                        projectModel.addElement(p);
+                    }
+                    if (projects.isEmpty()) {
+                        membersModel.clear();
+                        if (selectionListener != null) {
+                            selectionListener.onProjectSelected(null);
+                        }
+                        if (projectClearedListener != null) {
+                            projectClearedListener.run();
+                        }
+                        if (showErrors) {
+                            statusLabel.setText("Loaded 0 projects");
+                        }
+                        return;
+                    }
+                    if (targetId != null) {
+                        int idx = -1;
+                        for (int i = 0; i < projectModel.size(); i++) {
+                            if (targetId.equals(projectModel.get(i).getId())) {
+                                idx = i;
+                                break;
+                            }
+                        }
+                        if (idx >= 0) {
+                            projectList.setSelectedIndex(idx);
+                            return;
+                        } else {
+                            projectList.clearSelection();
+                            membersModel.clear();
+                            if (selectionListener != null) {
+                                selectionListener.onProjectSelected(null);
+                            }
+                            if (projectClearedListener != null) {
+                                projectClearedListener.run();
+                            }
+                            return;
+                        }
+                    }
+                    projectList.setSelectedIndex(0);
+                    if (showErrors) {
+                        statusLabel.setText("Loaded " + projects.size() + " projects");
+                    }
+                } catch (Exception ex) {
+                    if (showErrors) {
+                        statusLabel.setText("Auto refresh failed: " + describeError(ex));
+                    }
+                }
+            }
+        }.execute();
+    }
+
+    public void startAutoRefresh() {
+        if (!autoRefreshTimer.isRunning()) {
+            autoRefreshTimer.start();
+        }
+    }
+
+    public void stopAutoRefresh() {
+        if (autoRefreshTimer.isRunning()) {
+            autoRefreshTimer.stop();
+        }
     }
 }
