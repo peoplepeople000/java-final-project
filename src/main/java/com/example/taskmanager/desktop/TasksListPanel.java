@@ -100,8 +100,8 @@ public class TasksListPanel extends JPanel {
         add(new JScrollPane(list), BorderLayout.CENTER);
         add(bottom, BorderLayout.SOUTH);
 
-        refreshTimer = new Timer(5000, e -> timedRefresh());
-        refreshTimer.start();
+        refreshTimer = new Timer(5000, e -> refreshTasks(false));
+        refreshTimer.setRepeats(true);
     }
 
     public void setCurrentProject(ProjectDto project) {
@@ -110,9 +110,11 @@ public class TasksListPanel extends JPanel {
             projectLabel.setText("No project selected");
             model.clear();
             statusLabel.setText(" ");
+            stopAutoRefresh();
         } else {
             projectLabel.setText("Project: " + project.getName());
-            reloadTasks();
+            refreshTasks(true);
+            startAutoRefresh();
         }
     }
 
@@ -120,19 +122,11 @@ public class TasksListPanel extends JPanel {
         setCurrentProject(null);
     }
 
-    private void timedRefresh() {
+    private void refreshTasks(boolean showErrors) {
         if (currentProject == null) {
-            return;
-        }
-        if (refreshInProgress.get()) {
-            return;
-        }
-        reloadTasks();
-    }
-
-    private void reloadTasks() {
-        if (currentProject == null) {
-            statusLabel.setText("Select a project to view tasks");
+            if (showErrors) {
+                statusLabel.setText("Select a project to view tasks");
+            }
             return;
         }
         refreshInProgress.set(true);
@@ -165,32 +159,48 @@ public class TasksListPanel extends JPanel {
                             }
                         }
                     }
-                    statusLabel.setText("Loaded " + tasks.size() + " tasks");
+                    if (showErrors) {
+                        statusLabel.setText("Loaded " + tasks.size() + " tasks");
+                    }
                 } catch (Exception ex) {
-                    statusLabel.setText("Load failed: " + describeError(ex));
+                    if (showErrors) {
+                        statusLabel.setText("Auto refresh failed: " + describeError(ex));
+                    }
                 }
             }
         }.execute();
     }
 
+    public void startAutoRefresh() {
+        if (!refreshTimer.isRunning()) {
+            refreshTimer.start();
+        }
+    }
+
+    public void stopAutoRefresh() {
+        if (refreshTimer.isRunning()) {
+            refreshTimer.stop();
+        }
+    }
+
     private void openCreateDialog() {
-        refreshTimer.stop();
+        stopAutoRefresh();
         if (currentProject == null) {
             JOptionPane.showMessageDialog(this, "Select a project first");
-            refreshTimer.start();
+            startAutoRefresh();
             return;
         }
         java.awt.Window owner = javax.swing.SwingUtilities.getWindowAncestor(this);
         CreateTaskDialog dialog = new CreateTaskDialog(apiClient, owner,
                 currentProject.getId(), currentProject.getName());
         dialog.setOnSuccess(() -> {
-            reloadTasks();
-            refreshTimer.start();
+            refreshTasks(true);
+            startAutoRefresh();
         });
         dialog.addWindowListener(new java.awt.event.WindowAdapter() {
             @Override
             public void windowClosed(java.awt.event.WindowEvent e) {
-                refreshTimer.start();
+                startAutoRefresh();
             }
         });
         dialog.setVisible(true);
@@ -202,16 +212,16 @@ public class TasksListPanel extends JPanel {
             JOptionPane.showMessageDialog(this, "Select a task first");
             return;
         }
-        refreshTimer.stop();
+        stopAutoRefresh();
         java.awt.Window owner = javax.swing.SwingUtilities.getWindowAncestor(this);
         EditTaskDialog dialog = new EditTaskDialog(owner, apiClient, currentProject.getId(), selected, () -> {
-            reloadTasks();
-            refreshTimer.start();
+            refreshTasks(true);
+            startAutoRefresh();
         });
         dialog.addWindowListener(new java.awt.event.WindowAdapter() {
             @Override
             public void windowClosed(java.awt.event.WindowEvent e) {
-                refreshTimer.start();
+                startAutoRefresh();
             }
         });
         dialog.setVisible(true);
@@ -235,7 +245,7 @@ public class TasksListPanel extends JPanel {
                 try {
                     get();
                     statusLabel.setText("Status updated");
-                    reloadTasks();
+                    refreshTasks(true);
                 } catch (Exception ex) {
                     statusLabel.setText("Update failed: " + describeError(ex));
                 }
@@ -253,7 +263,7 @@ public class TasksListPanel extends JPanel {
         if (confirm != JOptionPane.YES_OPTION) {
             return;
         }
-        refreshTimer.stop();
+        stopAutoRefresh();
         new SwingWorker<Void, Void>() {
             @Override
             protected Void doInBackground() {
@@ -263,11 +273,11 @@ public class TasksListPanel extends JPanel {
 
             @Override
             protected void done() {
-                refreshTimer.start();
+                startAutoRefresh();
                 try {
                     get();
                     statusLabel.setText("Task deleted");
-                    reloadTasks();
+                    refreshTasks(true);
                 } catch (Exception ex) {
                     statusLabel.setText("Delete failed: " + describeError(ex));
                 }
