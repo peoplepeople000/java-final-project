@@ -3,6 +3,8 @@ package com.example.taskmanager.desktop;
 import com.example.taskmanager.desktop.DesktopApiClient.TaskDto;
 import com.example.taskmanager.desktop.DesktopApiClient.UserDto;
 import java.awt.BorderLayout;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
@@ -14,6 +16,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.function.Consumer;
 import javax.swing.BorderFactory;
+import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
@@ -21,7 +24,9 @@ import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
+import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.SpinnerDateModel;
 import javax.swing.SwingWorker;
@@ -32,7 +37,7 @@ public class CreateTaskDialog extends JDialog {
     private final Long projectId;
     private final String projectName;
     private final JTextField titleField = new JTextField();
-    private final JTextField descriptionField = new JTextField();
+    private final JTextArea descriptionField = new JTextArea(4, 30);
     private final JComboBox<String> statusField = new JComboBox<>(new String[] { "TODO", "DOING", "DONE" });
     private final JComboBox<String> priorityField = new JComboBox<>(new String[] { "LOW", "MEDIUM", "HIGH" });
     private final JComboBox<UserDto> assigneeField = new JComboBox<>();
@@ -47,8 +52,11 @@ public class CreateTaskDialog extends JDialog {
         this.apiClient = apiClient;
         this.projectId = projectId;
         this.projectName = projectName;
-        setLayout(new BorderLayout(6, 6));
+        setLayout(new BorderLayout(8, 8));
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+        setPreferredSize(new Dimension(520, 520));
+        titleField.setColumns(30);
+        descriptionField.setColumns(30);
         buildUi();
         pack();
         setLocationRelativeTo(owner);
@@ -56,40 +64,55 @@ public class CreateTaskDialog extends JDialog {
     }
 
     private void buildUi() {
-        JPanel form = new JPanel(new GridBagLayout());
+        JPanel main = new JPanel();
+        main.setLayout(new BoxLayout(main, BoxLayout.Y_AXIS));
+        main.add(buildDetailsPanel());
+        main.add(buildActionsPanel());
+
+        statusLabel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+
+        add(main, BorderLayout.CENTER);
+        add(statusLabel, BorderLayout.SOUTH);
+    }
+
+    private JPanel buildDetailsPanel() {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBorder(BorderFactory.createTitledBorder("Task Details"));
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(5, 5, 5, 5);
+        gbc.insets = new Insets(4, 4, 4, 4);
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.gridx = 0;
         gbc.gridy = 0;
-        form.add(new JLabel("Title"), gbc);
+        panel.add(new JLabel("Title"), gbc);
         gbc.gridx = 1;
         gbc.weightx = 1;
-        form.add(titleField, gbc);
+        panel.add(titleField, gbc);
 
         gbc.gridx = 0;
         gbc.gridy++;
         gbc.weightx = 0;
-        form.add(new JLabel("Description"), gbc);
+        panel.add(new JLabel("Description"), gbc);
         gbc.gridx = 1;
         gbc.weightx = 1;
-        form.add(descriptionField, gbc);
+        descriptionField.setLineWrap(true);
+        descriptionField.setWrapStyleWord(true);
+        panel.add(new JScrollPane(descriptionField), gbc);
 
         gbc.gridx = 0;
         gbc.gridy++;
-        form.add(new JLabel("Status"), gbc);
+        panel.add(new JLabel("Status"), gbc);
         gbc.gridx = 1;
-        form.add(statusField, gbc);
+        panel.add(statusField, gbc);
 
         gbc.gridx = 0;
         gbc.gridy++;
-        form.add(new JLabel("Priority"), gbc);
+        panel.add(new JLabel("Priority"), gbc);
         gbc.gridx = 1;
-        form.add(priorityField, gbc);
+        panel.add(priorityField, gbc);
 
         gbc.gridx = 0;
         gbc.gridy++;
-        form.add(new JLabel("Assignee"), gbc);
+        panel.add(new JLabel("Assignee"), gbc);
         gbc.gridx = 1;
         assigneeField.setRenderer((list, value, index, isSelected, cellHasFocus) -> {
             JLabel label = new JLabel();
@@ -103,31 +126,29 @@ public class CreateTaskDialog extends JDialog {
             return label;
         });
         assigneeField.setEnabled(false);
-        form.add(assigneeField, gbc);
+        panel.add(assigneeField, gbc);
 
         gbc.gridx = 0;
         gbc.gridy++;
-        form.add(dueDateEnabled, gbc);
+        panel.add(dueDateEnabled, gbc);
         gbc.gridx = 1;
         dueDateSpinner.setEditor(new JSpinner.DateEditor(dueDateSpinner, "yyyy-MM-dd HH:mm"));
         dueDateSpinner.setEnabled(false);
         dueDateEnabled.addActionListener(e -> dueDateSpinner.setEnabled(dueDateEnabled.isSelected()));
-        form.add(dueDateSpinner, gbc);
+        panel.add(dueDateSpinner, gbc);
 
-        JPanel actions = new JPanel();
+        return panel;
+    }
+
+    private JPanel buildActionsPanel() {
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton createBtn = new JButton("Create Task");
         JButton cancelBtn = new JButton("Cancel");
-        JButton createBtn = new JButton("Create");
-        actions.add(cancelBtn);
-        actions.add(createBtn);
-
         cancelBtn.addActionListener(e -> dispose());
         createBtn.addActionListener(e -> submit(createBtn));
-
-        statusLabel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
-
-        add(form, BorderLayout.CENTER);
-        add(actions, BorderLayout.SOUTH);
-        add(statusLabel, BorderLayout.NORTH);
+        panel.add(createBtn);
+        panel.add(cancelBtn);
+        return panel;
     }
 
     private void loadMembers() {

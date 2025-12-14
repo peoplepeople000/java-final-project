@@ -25,7 +25,7 @@ public class BoardPanel extends JPanel {
         add(buildHeader(), BorderLayout.NORTH);
 
         JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, projectsPanel, tasksPanel);
-        split.setResizeWeight(0.35);
+        split.setResizeWeight(0.25);
         add(split, BorderLayout.CENTER);
 
         projectsPanel.setProjectSelectionListener(project -> tasksPanel.setCurrentProject(project));
@@ -50,6 +50,7 @@ public class BoardPanel extends JPanel {
         DesktopApiClient.AuthResponse user = apiClient.getCurrentUser();
         userLabel.setText(user != null ? user.getUsername() + " (" + user.getEmail() + ")" : "");
         projectsPanel.reloadProjects();
+        projectsPanel.startAutoRefresh();
         tasksPanel.setCurrentProject(null);
     }
 }

@@ -4,12 +4,12 @@ import com.example.taskmanager.desktop.DesktopApiClient.MemberDto;
 import com.example.taskmanager.desktop.DesktopApiClient.ProjectDto;
 import com.example.taskmanager.desktop.DesktopApiClient.UserDto;
 import java.awt.BorderLayout;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
-import java.awt.FlowLayout;
 import java.awt.Insets;
 import java.awt.Window;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -32,7 +32,7 @@ public class CreateProjectDialog extends JDialog {
 
     private final DesktopApiClient apiClient;
     private final JTextField nameField = new JTextField();
-    private final JTextArea descriptionField = new JTextArea(3, 20);
+    private final JTextArea descriptionField = new JTextArea(4, 30);
     private final DefaultListModel<MemberDto> membersModel = new DefaultListModel<>();
     private final JList<MemberDto> membersList = new JList<>(membersModel);
     private final JComboBox<UserDto> addCombo = new JComboBox<>();
@@ -44,8 +44,11 @@ public class CreateProjectDialog extends JDialog {
     public CreateProjectDialog(DesktopApiClient apiClient, Window owner) {
         super(owner, "Create Project", ModalityType.APPLICATION_MODAL);
         this.apiClient = apiClient;
-        setLayout(new BorderLayout(6, 6));
+        setLayout(new BorderLayout(8, 8));
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+        setPreferredSize(new Dimension(520, 520));
+        nameField.setColumns(30);
+        descriptionField.setColumns(30);
         buildUi();
         pack();
         setLocationRelativeTo(owner);

@@ -4,6 +4,7 @@ import com.example.taskmanager.desktop.DesktopApiClient.MemberDto;
 import com.example.taskmanager.desktop.DesktopApiClient.ProjectDto;
 import com.example.taskmanager.desktop.DesktopApiClient.UserDto;
 import java.awt.BorderLayout;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -52,6 +53,9 @@ public class EditProjectDialog extends JDialog {
         this.onProjectDeletedOrUpdated = onProjectDeletedOrUpdated;
         setLayout(new BorderLayout(8, 8));
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+        setPreferredSize(new Dimension(520, 520));
+        nameField.setColumns(30);
+        descArea.setColumns(30);
         buildUi();
         pack();
         setLocationRelativeTo(owner);
