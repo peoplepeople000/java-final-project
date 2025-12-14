@@ -4,6 +4,7 @@ import com.example.taskmanager.desktop.DesktopApiClient.MemberDto;
 import com.example.taskmanager.desktop.DesktopApiClient.ProjectDto;
 import com.example.taskmanager.desktop.DesktopApiClient.UserDto;
 import java.awt.BorderLayout;
+import java.awt.Dimension;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.FlowLayout;
@@ -46,6 +47,7 @@ public class CreateProjectDialog extends JDialog {
         setLayout(new BorderLayout(6, 6));
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         buildUi();
+        setMinimumSize(new Dimension(520, 520));
         pack();
         setLocationRelativeTo(owner);
         loadUsers();

@@ -12,6 +12,7 @@ import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
 import javax.swing.ListSelectionModel;
 import javax.swing.SwingWorker;
 
@@ -36,7 +37,9 @@ public class ProjectsListPanel extends JPanel {
             JLabel label = new JLabel();
             if (value != null) {
                 String desc = value.getDescription() != null ? value.getDescription() : "";
-                label.setText("<html><b>" + value.getName() + "</b><br/>" + desc + "</html>");
+                String owner = value.getOwnerUsername() != null ? value.getOwnerUsername() : "Unknown owner";
+                label.setText("<html><b>" + value.getName() + "</b> <span style='color:#666'>(Owner: " + owner
+                        + ")</span><br/>" + desc + "</html>");
             }
             if (isSelected) {
                 label.setOpaque(true);
@@ -91,11 +94,14 @@ public class ProjectsListPanel extends JPanel {
         statusLabel.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
 
         JPanel listsPanel = new JPanel(new BorderLayout(6, 6));
-        listsPanel.add(new JScrollPane(projectList), BorderLayout.CENTER);
+        JScrollPane projectScroll = new JScrollPane(projectList);
         JPanel membersPanel = new JPanel(new BorderLayout());
         membersPanel.add(new JLabel("Members"), BorderLayout.NORTH);
         membersPanel.add(new JScrollPane(membersList), BorderLayout.CENTER);
-        listsPanel.add(membersPanel, BorderLayout.SOUTH);
+        JSplitPane verticalSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, projectScroll, membersPanel);
+        verticalSplit.setResizeWeight(0.7);
+        verticalSplit.setBorder(BorderFactory.createEmptyBorder());
+        listsPanel.add(verticalSplit, BorderLayout.CENTER);
 
         add(toolbar, BorderLayout.NORTH);
         add(listsPanel, BorderLayout.CENTER);

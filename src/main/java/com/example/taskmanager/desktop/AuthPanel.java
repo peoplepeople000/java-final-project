@@ -5,6 +5,7 @@ import java.awt.BorderLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.event.ActionListener;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JLabel;
@@ -83,7 +84,7 @@ public class AuthPanel extends JPanel {
             gbc.gridy++;
             form.add(registerButton, gbc);
 
-            registerButton.addActionListener(event -> {
+            ActionListener submitAction = event -> {
                 registerButton.setEnabled(false);
                 updateStatus("Sending registration...");
                 new SwingWorker<Void, Void>() {
@@ -104,7 +105,12 @@ public class AuthPanel extends JPanel {
                         registerButton.setEnabled(true);
                     }
                 }.execute();
-            });
+            };
+            registerButton.addActionListener(submitAction);
+
+            usernameField.addActionListener(submitAction);
+            emailField.addActionListener(submitAction);
+            passwordField.addActionListener(submitAction);
 
             add(form, BorderLayout.CENTER);
             add(statusLabel, BorderLayout.SOUTH);
@@ -142,7 +148,7 @@ public class AuthPanel extends JPanel {
             gbc.gridy++;
             form.add(loginButton, gbc);
 
-            loginButton.addActionListener(event -> {
+            ActionListener submitAction = event -> {
                 loginButton.setEnabled(false);
                 updateStatus("Signing in...");
                 new SwingWorker<AuthResponse, Void>() {
@@ -172,7 +178,11 @@ public class AuthPanel extends JPanel {
                         }
                     }
                 }.execute();
-            });
+            };
+            loginButton.addActionListener(submitAction);
+
+            usernameOrEmailField.addActionListener(submitAction);
+            passwordField.addActionListener(submitAction);
 
             add(form, BorderLayout.CENTER);
             add(statusLabel, BorderLayout.SOUTH);

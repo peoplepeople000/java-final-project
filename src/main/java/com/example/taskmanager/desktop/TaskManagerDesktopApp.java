@@ -6,11 +6,18 @@ import java.awt.Container;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 
 public class TaskManagerDesktopApp extends JFrame implements LoginSuccessListener {
 
     private static final String CARD_AUTH = "AUTH";
     private static final String CARD_BOARD = "BOARD";
+
+    static {
+        UIManager.put("OptionPane.yesButtonText", "Yes");
+        UIManager.put("OptionPane.noButtonText", "No");
+        UIManager.put("OptionPane.cancelButtonText", "Cancel");
+    }
 
     private final DesktopApiClient apiClient;
     private final CardLayout cardLayout = new CardLayout();
