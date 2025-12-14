@@ -1,81 +1,221 @@
-# Task Manager Backend & Clients
+# Task Manager – Collaborative Desktop App
 
-A Spring Boot 2.7.x application that exposes a collaborative task manager API powered by SQLite. The repository also includes a Swing desktop client for quick end-to-end testing.
+A collaborative task management system with a **Java Swing desktop client** and a **Spring Boot backend**, inspired by tools like Trello.  
+Supports multi-user collaboration, project/member management, and task tracking with due dates.
 
-## Tech Stack
+---
+
+## ✨ Features
+
+### Authentication
+
+- User registration and login
+- Session managed on the desktop client
+- Simplified authentication using request header `X-USER-ID`
+
+### Projects
+
+- Create projects
+- Edit project name and description
+- Delete projects (owner only)
+- Project members management (add / remove members)
+
+### Members
+
+- Project owner can:
+  - Add members from all users
+  - Remove members (except owner)
+- Member selection by **username**, not numeric IDs
+- Member management integrated into **Edit Project** dialog
+
+### Tasks
+
+- Create tasks under projects
+- Assign tasks to project members
+- Update task status (TODO / DOING / DONE)
+- Delete tasks
+- Due date selection via **date + time picker**
+- Unassigned tasks supported
+
+### Desktop UI
+
+- Java Swing desktop application
+- CardLayout-based navigation (Auth → Board)
+- Trello-like layout:
+  - Left: Projects
+  - Right: Tasks
+- Modal dialogs for:
+  - Create Project
+  - Create Task
+  - Edit Project (details + members + delete)
+
+---
+
+## 🧱 Architecture
+
+```
+[ Java Swing Desktop App ]
+            |
+            | REST API (HTTP / JSON)
+            |
+[ Spring Boot Backend ]
+            |
+        SQLite Database
+```
+
+### Backend
+
 - Java 8
-- Spring Boot 2.7.x (Web, Data JPA, Validation, Actuator)
-- SQLite (via `org.xerial:sqlite-jdbc`)
-- Maven build
-- Swing desktop UI
+- Spring Boot 2.7.x
+- Spring Data JPA
+- SQLite
+- RESTful API
 
-## Features
-- User management with registration and simple login (passwords hashed via SHA-256 placeholder)
-- Entities for `User`, `Project`, `ProjectMember`, and `Task`
-- Project APIs: create project, list projects for a user, add/list project members
-- Task APIs: create tasks per project, list project tasks, update task status
-- Global exception handling with consistent JSON error payloads
-- Desktop (Swing) client for register/login proof of concept
+### Desktop Client
 
-## Project Structure
+- Java Swing (Java 8)
+- SwingWorker for async API calls
+- No external UI libraries
+
+---
+
+## 📂 Project Structure (Simplified)
+
 ```
-src/main/java/com/example/taskmanager/
-├── TaskManagerApplication.java
-├── config/SQLiteDialect.java
-├── controller/
-│   ├── AuthController.java
-│   ├── ProjectController.java
-│   └── TaskController.java
-├── desktop/
-│   ├── DesktopApiClient.java
-│   └── TaskManagerDesktopApp.java
-├── exception/...
-├── model/entity/...
-├── repository/...
-└── service/
-    ├── AuthService.java
-    ├── ProjectService.java
-    ├── TaskService.java
-    └── UserService.java
-src/main/resources/
-└── application.yml
+.
+├── backend
+│   ├── controller
+│   ├── service
+│   ├── repository
+│   ├── model
+│   └── Application.java
+│
+└── desktop
+    ├── TaskManagerDesktopApp.java
+    ├── AuthPanel.java
+    ├── BoardPanel.java
+    ├── ProjectsListPanel.java
+    ├── TasksListPanel.java
+    ├── EditProjectDialog.java
+    ├── CreateProjectDialog.java
+    ├── CreateTaskDialog.java
+    └── DesktopApiClient.java
 ```
 
-## Getting Started
-### Prerequisites
-- Java 8 JDK installed and available on `PATH`
-- Maven 3.6+ installed
+---
 
-### Build & Run
-```
+## 🚀 Getting Started
+
+### 1) Backend Setup
+
+#### Prerequisites
+
+- Java 8+
+- Maven
+
+#### Run Backend
+
+```bash
+cd backend
 mvn clean package
 mvn spring-boot:run
 ```
-The application listens on `http://localhost:8081` (configured in `application.yml`).
 
-SQLite database file `taskmanager.db` will be created in the project root. Default schema management uses Hibernate `ddl-auto=update`.
+Backend runs at:
 
-### REST Endpoints
-- `POST /api/auth/register` – body `{ "username", "email", "password" }`
-- `POST /api/auth/login` – body `{ "usernameOrEmail", "password" }`
-- `POST /api/projects` – create project (owner ID)
-- `GET /api/projects/user/{userId}` – projects where user is owner or member
-- `POST /api/projects/{projectId}/members` – add member
-- `GET /api/projects/{projectId}/members`
-- `POST /api/projects/{projectId}/tasks`
-- `GET /api/projects/{projectId}/tasks`
-- `PATCH /api/tasks/{taskId}/status`
-
-All error responses follow `{ timestamp, status, error, message, path }`.
-
-## Desktop Client
-`TaskManagerDesktopApp` (Swing) provides register/login tabs and communicates with the backend through `DesktopApiClient`. Run it from your IDE or via:
 ```
-mvn exec:java -Dexec.mainClass="com.example.taskmanager.desktop.TaskManagerDesktopApp"
+http://localhost:8081
 ```
-Ensure the backend is running first.
 
-## Notes
-- Password hashing currently uses SHA-256 for simplicity. Replace with BCrypt or another strong algorithm for production.
-- Authentication is deliberately simple (no tokens/sessions). Extend with Spring Security or JWT for real deployments.
-- SQLite schema modifications are limited; consider using Flyway or manual migrations for complex changes.
+---
+
+### 2) Desktop App Setup
+
+#### Run Desktop Client
+
+```bash
+cd desktop
+javac com/example/taskmanager/desktop/TaskManagerDesktopApp.java
+java com.example.taskmanager.desktop.TaskManagerDesktopApp
+```
+
+Or run directly from your IDE.
+
+---
+
+## 🧪 Demo Flow
+
+1. Launch Desktop App
+2. Register a new user
+3. Login
+4. Create a project
+5. Edit project:
+   - Change name / description
+   - Add or remove members
+6. Create tasks:
+   - Assign to members
+   - Set due date
+7. Update task status
+8. Delete task or project
+
+---
+
+## 🔐 Authorization Rules
+
+- Only project owner can:
+  - Edit project details
+  - Add/remove members
+  - Delete project
+- Members can:
+  - View projects
+  - Create and update tasks
+
+---
+
+## 🗑️ Delete Behavior
+
+- Deleting a project also deletes:
+  - All tasks under the project
+  - All project members
+- Delete order handled safely to avoid SQLite foreign key constraints:
+  ```
+  Tasks → Project Members → Project
+  ```
+
+---
+
+## 🛠️ Technologies Used
+
+- Java 8
+- Spring Boot
+- Spring Data JPA
+- SQLite
+- Java Swing
+- Maven
+
+---
+
+## 📌 Design Highlights
+
+- Clear separation between backend and desktop client
+- Asynchronous UI updates using SwingWorker
+- User-friendly UI (no ID-based inputs)
+- Owner-based authorization enforcement
+- Extendable architecture for future features
+
+---
+
+## 🔮 Future Improvements
+
+- Task filters (due soon / overdue)
+- Drag-and-drop task board
+- Project archiving (soft delete)
+- Notifications for upcoming due dates
+- Role-based permissions
+
+---
+
+## 👤 Author
+
+**Ta-Chun Tai**, **You-Chun Luo**
+Java / Backend / Desktop Application Developer

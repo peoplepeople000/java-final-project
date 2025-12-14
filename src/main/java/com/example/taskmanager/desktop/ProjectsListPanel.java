@@ -65,18 +65,14 @@ public class ProjectsListPanel extends JPanel {
         JButton refreshBtn = new JButton("Refresh");
         JButton addBtn = new JButton("+ Project");
         JButton editProjectBtn = new JButton("Edit Project");
-        JButton deleteBtn = new JButton("Delete Project");
         editProjectBtn.setEnabled(false);
-        deleteBtn.setEnabled(false);
         toolbar.add(refreshBtn);
         toolbar.add(addBtn);
         toolbar.add(editProjectBtn);
-        toolbar.add(deleteBtn);
 
         refreshBtn.addActionListener(e -> reloadProjects());
         addBtn.addActionListener(e -> openCreateDialog());
         editProjectBtn.addActionListener(e -> openEditDialog());
-        deleteBtn.addActionListener(e -> deleteSelectedProject());
 
         projectList.addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
@@ -85,7 +81,6 @@ public class ProjectsListPanel extends JPanel {
                 boolean owner = selected != null && user != null && selected.getOwnerId() != null
                         && selected.getOwnerId().equals(user.getId());
                 editProjectBtn.setEnabled(selected != null && owner);
-                deleteBtn.setEnabled(selected != null && owner);
                 loadMembersForSelected();
                 if (selectionListener != null) {
                     selectionListener.onProjectSelected(selected);
@@ -98,10 +93,7 @@ public class ProjectsListPanel extends JPanel {
         JPanel listsPanel = new JPanel(new BorderLayout(6, 6));
         listsPanel.add(new JScrollPane(projectList), BorderLayout.CENTER);
         JPanel membersPanel = new JPanel(new BorderLayout());
-        JPanel membersHeader = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        membersHeader.add(new JLabel("Members"));
-        membersHeader.add(editProjectBtn);
-        membersPanel.add(membersHeader, BorderLayout.NORTH);
+        membersPanel.add(new JLabel("Members"), BorderLayout.NORTH);
         membersPanel.add(new JScrollPane(membersList), BorderLayout.CENTER);
         listsPanel.add(membersPanel, BorderLayout.SOUTH);
 
