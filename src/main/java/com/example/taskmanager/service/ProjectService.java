@@ -5,6 +5,8 @@ import com.example.taskmanager.exception.NotFoundException;
 import com.example.taskmanager.model.entity.Project;
 import com.example.taskmanager.model.entity.ProjectMember;
 import com.example.taskmanager.model.entity.User;
+import com.example.taskmanager.service.ChangeEventService;
+import com.example.taskmanager.service.ChangeEventTypes;
 import com.example.taskmanager.repository.TaskRepository;
 import com.example.taskmanager.repository.ProjectMemberRepository;
 import com.example.taskmanager.repository.ProjectRepository;
@@ -28,15 +30,18 @@ public class ProjectService {
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository projectMemberRepository;
     private final TaskRepository taskRepository;
+    private final ChangeEventService changeEventService;
 
     public ProjectService(UserRepository userRepository,
             ProjectRepository projectRepository,
             ProjectMemberRepository projectMemberRepository,
-            TaskRepository taskRepository) {
+            TaskRepository taskRepository,
+            ChangeEventService changeEventService) {
         this.userRepository = userRepository;
         this.projectRepository = projectRepository;
         this.projectMemberRepository = projectMemberRepository;
         this.taskRepository = taskRepository;
+        this.changeEventService = changeEventService;
     }
 
     @Transactional
@@ -57,6 +62,8 @@ public class ProjectService {
         ownerMember.setJoinedAt(LocalDateTime.now());
         projectMemberRepository.save(ownerMember);
 
+        changeEventService.record(ChangeEventTypes.PROJECT_CREATED, savedProject.getId(), savedProject.getId());
+        changeEventService.record(ChangeEventTypes.PROJECT_MEMBERS_UPDATED, savedProject.getId(), savedProject.getId());
         return savedProject;
     }
 
@@ -64,6 +71,20 @@ public class ProjectService {
     public Project getById(Long projectId) {
         return projectRepository.findById(projectId)
                 .orElseThrow(() -> new NotFoundException("Project not found"));
+    }
+
+    @Transactional(readOnly = true)
+    public Project getProjectForUser(Long projectId, Long userId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new NotFoundException("Project not found"));
+        if (project.getOwner() != null && project.getOwner().getId().equals(userId)) {
+            return project;
+        }
+        boolean member = projectMemberRepository.existsByProjectIdAndUserId(projectId, userId);
+        if (!member) {
+            throw new BadRequestException("Not authorized to view this project");
+        }
+        return project;
     }
 
     @Transactional(readOnly = true)
@@ -107,7 +128,9 @@ public class ProjectService {
         newMember.setUser(targetUser);
         newMember.setRole(ROLE_MEMBER);
         newMember.setJoinedAt(LocalDateTime.now());
-        return projectMemberRepository.save(newMember);
+        ProjectMember saved = projectMemberRepository.save(newMember);
+        changeEventService.record(ChangeEventTypes.PROJECT_MEMBERS_UPDATED, project.getId(), project.getId());
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -162,6 +185,7 @@ public class ProjectService {
 
         // TODO: if tasks assigned to this user in the project, consider unassigning them.
         projectMemberRepository.deleteByProjectIdAndUserId(projectId, userIdToRemove);
+        changeEventService.record(ChangeEventTypes.PROJECT_MEMBERS_UPDATED, projectId, projectId);
     }
 
     @Transactional
@@ -177,6 +201,7 @@ public class ProjectService {
         taskRepository.deleteByProjectId(projectId);
         projectMemberRepository.deleteByProjectId(projectId);
         projectRepository.delete(project);
+        changeEventService.record(ChangeEventTypes.PROJECT_DELETED, projectId, projectId);
     }
 
     @Transactional
@@ -191,6 +216,8 @@ public class ProjectService {
         }
         project.setName(name.trim());
         project.setDescription(description);
-        return projectRepository.save(project);
+        Project updated = projectRepository.save(project);
+        changeEventService.record(ChangeEventTypes.PROJECT_UPDATED, updated.getId(), updated.getId());
+        return updated;
     }
 }

@@ -139,7 +139,9 @@ public class ProjectsListPanel extends JPanel {
         add(listsPanel, BorderLayout.CENTER);
         add(statusLabel, BorderLayout.SOUTH);
 
-        autoRefreshTimer = new Timer(10000, e -> refreshProjects(false, null));
+        autoRefreshTimer = new Timer(10000, e -> {
+            // disabled periodic refresh; left for compatibility
+        });
         autoRefreshTimer.setRepeats(true);
     }
 
@@ -149,6 +151,53 @@ public class ProjectsListPanel extends JPanel {
 
     public void setProjectClearedListener(Runnable projectClearedListener) {
         this.projectClearedListener = projectClearedListener;
+    }
+
+    public Long getSelectedProjectId() {
+        ProjectDto selected = projectList.getSelectedValue();
+        return selected != null ? selected.getId() : null;
+    }
+
+    public void upsertProject(ProjectDto project) {
+        if (project == null) {
+            return;
+        }
+        for (int i = 0; i < projectModel.size(); i++) {
+            if (project.getId().equals(projectModel.get(i).getId())) {
+                projectModel.set(i, project);
+                return;
+            }
+        }
+        projectModel.addElement(project);
+    }
+
+    public void removeProjectById(Long id) {
+        if (id == null) {
+            return;
+        }
+        for (int i = 0; i < projectModel.size(); i++) {
+            if (id.equals(projectModel.get(i).getId())) {
+                projectModel.remove(i);
+                if (selectionListener != null) {
+                    selectionListener.onProjectSelected(null);
+                }
+                if (projectClearedListener != null) {
+                    projectClearedListener.run();
+                }
+                membersModel.clear();
+                break;
+            }
+        }
+    }
+
+    public void refreshMembers(Long projectId) {
+        if (projectId == null) {
+            return;
+        }
+        ProjectDto selected = projectList.getSelectedValue();
+        if (selected != null && projectId.equals(selected.getId())) {
+            loadMembersForSelected();
+        }
     }
 
     public void reloadProjects() {
@@ -364,14 +413,56 @@ public class ProjectsListPanel extends JPanel {
     }
 
     public void startAutoRefresh() {
-        if (!autoRefreshTimer.isRunning()) {
-            autoRefreshTimer.start();
-        }
+        // no-op: periodic refresh disabled
     }
 
     public void stopAutoRefresh() {
         if (autoRefreshTimer.isRunning()) {
             autoRefreshTimer.stop();
+        }
+    }
+
+    public void replaceAllProjects(List<ProjectDto> projects, Long selectProjectId) {
+        projectModel.clear();
+        if (projects != null) {
+            for (ProjectDto p : projects) {
+                projectModel.addElement(p);
+            }
+        }
+        if (projectModel.isEmpty()) {
+            membersModel.clear();
+            if (selectionListener != null) {
+                selectionListener.onProjectSelected(null);
+            }
+            if (projectClearedListener != null) {
+                projectClearedListener.run();
+            }
+            return;
+        }
+        Long target = selectProjectId;
+        if (target == null) {
+            ProjectDto current = projectList.getSelectedValue();
+            target = current != null ? current.getId() : null;
+        }
+        if (target != null) {
+            for (int i = 0; i < projectModel.size(); i++) {
+                if (target.equals(projectModel.get(i).getId())) {
+                    projectList.setSelectedIndex(i);
+                    loadMembersForSelected();
+                    return;
+                }
+            }
+        }
+        projectList.setSelectedIndex(0);
+        loadMembersForSelected();
+    }
+
+    public void replaceMembers(List<MemberDto> members) {
+        membersModel.clear();
+        if (members != null) {
+            for (MemberDto m : members) {
+                membersModel.addElement(m);
+            }
         }
     }
 }

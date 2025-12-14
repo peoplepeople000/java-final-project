@@ -8,6 +8,7 @@ import com.example.taskmanager.model.dto.project.ProjectResponse;
 import com.example.taskmanager.model.entity.Project;
 import com.example.taskmanager.model.entity.ProjectMember;
 import com.example.taskmanager.service.ProjectService;
+import com.example.taskmanager.exception.BadRequestException;
 import java.util.List;
 import java.util.stream.Collectors;
 import javax.validation.Valid;
@@ -31,6 +32,15 @@ public class ProjectController {
 
     public ProjectController(ProjectService projectService) {
         this.projectService = projectService;
+    }
+
+    @GetMapping("/{projectId}")
+    public ResponseEntity<ProjectResponse> getProject(
+            @RequestHeader(value = "X-USER-ID", required = false) String userIdHeader,
+            @PathVariable Long projectId) {
+        Long currentUserId = parseUserId(userIdHeader);
+        Project project = projectService.getProjectForUser(projectId, currentUserId);
+        return ResponseEntity.ok(ProjectResponse.from(project));
     }
 
     @PostMapping

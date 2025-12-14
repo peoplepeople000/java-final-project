@@ -64,6 +64,11 @@ public class DesktopApiClient {
                 new ParameterizedTypeReference<ProjectDto>() {});
     }
 
+    public ProjectDto getProjectById(Long projectId) {
+        return exchangeWithAuth("/api/projects/" + projectId, HttpMethod.GET, null,
+                new ParameterizedTypeReference<ProjectDto>() {});
+    }
+
     public List<TaskDto> listTasks(Long projectId) {
         return exchangeWithAuth("/api/projects/" + projectId + "/tasks", HttpMethod.GET, null,
                 new ParameterizedTypeReference<List<TaskDto>>() {});
@@ -102,6 +107,11 @@ public class DesktopApiClient {
                 new ParameterizedTypeReference<TaskDto>() {});
     }
 
+    public TaskDto getTaskById(Long taskId) {
+        return exchangeWithAuth("/api/tasks/" + taskId, HttpMethod.GET, null,
+                new ParameterizedTypeReference<TaskDto>() {});
+    }
+
     public void deleteTask(Long taskId) {
         exchangeWithAuth("/api/tasks/" + taskId, HttpMethod.DELETE, null,
                 new ParameterizedTypeReference<Void>() {});
@@ -127,6 +137,11 @@ public class DesktopApiClient {
     public void removeProjectMember(Long projectId, Long userId) {
         exchangeWithAuth("/api/projects/" + projectId + "/members/" + userId, HttpMethod.DELETE, null,
                 new ParameterizedTypeReference<Void>() {});
+    }
+
+    public List<ChangeEventDto> getChanges(long sinceId) {
+        return exchangeWithAuth("/api/changes?since=" + sinceId, HttpMethod.GET, null,
+                new ParameterizedTypeReference<List<ChangeEventDto>>() {});
     }
 
     public void deleteProject(Long projectId) {
@@ -468,6 +483,54 @@ public class DesktopApiClient {
 
         public void setUpdatedAt(String updatedAt) {
             this.updatedAt = updatedAt;
+        }
+    }
+
+    public static class ChangeEventDto {
+        private Long id;
+        private String type;
+        private Long entityId;
+        private Long projectId;
+        private Long createdAt;
+
+        public Long getId() {
+            return id;
+        }
+
+        public void setId(Long id) {
+            this.id = id;
+        }
+
+        public String getType() {
+            return type;
+        }
+
+        public void setType(String type) {
+            this.type = type;
+        }
+
+        public Long getEntityId() {
+            return entityId;
+        }
+
+        public void setEntityId(Long entityId) {
+            this.entityId = entityId;
+        }
+
+        public Long getProjectId() {
+            return projectId;
+        }
+
+        public void setProjectId(Long projectId) {
+            this.projectId = projectId;
+        }
+
+        public Long getCreatedAt() {
+            return createdAt;
+        }
+
+        public void setCreatedAt(Long createdAt) {
+            this.createdAt = createdAt;
         }
     }
 

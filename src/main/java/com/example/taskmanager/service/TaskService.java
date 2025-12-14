@@ -5,6 +5,8 @@ import com.example.taskmanager.exception.NotFoundException;
 import com.example.taskmanager.model.entity.Project;
 import com.example.taskmanager.model.entity.Task;
 import com.example.taskmanager.model.entity.User;
+import com.example.taskmanager.service.ChangeEventService;
+import com.example.taskmanager.service.ChangeEventTypes;
 import com.example.taskmanager.repository.ProjectMemberRepository;
 import com.example.taskmanager.repository.ProjectRepository;
 import com.example.taskmanager.repository.TaskRepository;
@@ -31,15 +33,18 @@ public class TaskService {
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository projectMemberRepository;
     private final UserRepository userRepository;
+    private final ChangeEventService changeEventService;
 
     public TaskService(TaskRepository taskRepository,
             ProjectRepository projectRepository,
             ProjectMemberRepository projectMemberRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            ChangeEventService changeEventService) {
         this.taskRepository = taskRepository;
         this.projectRepository = projectRepository;
         this.projectMemberRepository = projectMemberRepository;
         this.userRepository = userRepository;
+        this.changeEventService = changeEventService;
     }
 
     @Transactional
@@ -67,7 +72,9 @@ public class TaskService {
         task.setAssignee(assignee);
         task.setDueDate(dueDate);
 
-        return taskRepository.save(task);
+        Task saved = taskRepository.save(task);
+        changeEventService.record(ChangeEventTypes.TASK_CREATED, saved.getId(), projectId);
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -123,7 +130,9 @@ public class TaskService {
             task.setDueDate(dueDate);
         }
 
-        return taskRepository.save(task);
+        Task updated = taskRepository.save(task);
+        changeEventService.record(ChangeEventTypes.TASK_UPDATED, updated.getId(), task.getProject().getId());
+        return updated;
     }
 
     @Transactional
@@ -131,7 +140,9 @@ public class TaskService {
         Task task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new NotFoundException("Task not found"));
         ensureProjectMembership(task.getProject().getId(), currentUserId);
+        Long projectId = task.getProject().getId();
         taskRepository.delete(task);
+        changeEventService.record(ChangeEventTypes.TASK_DELETED, taskId, projectId);
     }
 
     private void ensureProjectMembership(Long projectId, Long userId) {

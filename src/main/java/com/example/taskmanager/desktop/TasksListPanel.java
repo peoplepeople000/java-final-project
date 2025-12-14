@@ -70,7 +70,9 @@ public class TasksListPanel extends JPanel {
         add(columns, BorderLayout.CENTER);
         add(statusLabel, BorderLayout.SOUTH);
 
-        refreshTimer = new Timer(5000, e -> refreshTasks(false));
+        refreshTimer = new Timer(5000, e -> {
+            // disabled periodic refresh; left for compatibility
+        });
         refreshTimer.setRepeats(true);
     }
 
@@ -84,12 +86,74 @@ public class TasksListPanel extends JPanel {
         } else {
             projectLabel.setText("Project: " + project.getName());
             refreshTasks(true);
-            startAutoRefresh();
         }
     }
 
     public void clearCurrentProject() {
         setCurrentProject(null);
+    }
+
+    public Long getCurrentProjectId() {
+        return currentProject != null ? currentProject.getId() : null;
+    }
+
+    public Long getSelectedTaskId() {
+        TaskDto t = todoList.getSelectedValue();
+        if (t != null) {
+            return t.getId();
+        }
+        t = doingList.getSelectedValue();
+        if (t != null) {
+            return t.getId();
+        }
+        t = doneList.getSelectedValue();
+        return t == null ? null : t.getId();
+    }
+
+    public void upsertTask(TaskDto task) {
+        if (task == null) {
+            return;
+        }
+        Long selectedId = getSelectedTaskId();
+        removeTaskById(task.getId());
+        if ("DOING".equalsIgnoreCase(task.getStatus())) {
+            doingModel.addElement(task);
+            doingHeader.setText("DOING (" + doingModel.getSize() + ")");
+        } else if ("DONE".equalsIgnoreCase(task.getStatus())) {
+            doneModel.addElement(task);
+            doneHeader.setText("DONE (" + doneModel.getSize() + ")");
+        } else {
+            todoModel.addElement(task);
+            todoHeader.setText("TODO (" + todoModel.getSize() + ")");
+        }
+        if (selectedId != null && selectedId.equals(task.getId())) {
+            if ("DOING".equalsIgnoreCase(task.getStatus())) {
+                doingList.setSelectedIndex(doingModel.size() - 1);
+            } else if ("DONE".equalsIgnoreCase(task.getStatus())) {
+                doneList.setSelectedIndex(doneModel.size() - 1);
+            } else {
+                todoList.setSelectedIndex(todoModel.size() - 1);
+            }
+        }
+    }
+
+    public void removeTaskById(Long taskId) {
+        if (taskId == null) {
+            return;
+        }
+        removeFromModel(taskId, todoModel);
+        removeFromModel(taskId, doingModel);
+        removeFromModel(taskId, doneModel);
+        todoHeader.setText("TODO (" + todoModel.getSize() + ")");
+        doingHeader.setText("DOING (" + doingModel.getSize() + ")");
+        doneHeader.setText("DONE (" + doneModel.getSize() + ")");
+    }
+
+    public void replaceAllTasks(List<TaskDto> tasks, Long preserveTaskId) {
+        clearLists();
+        if (tasks != null) {
+            renderTasks(tasks, preserveTaskId);
+        }
     }
 
     private void refreshTasks(boolean showErrors) {
@@ -130,9 +194,7 @@ public class TasksListPanel extends JPanel {
     }
 
     public void startAutoRefresh() {
-        if (!refreshTimer.isRunning()) {
-            refreshTimer.start();
-        }
+        // no-op: periodic refresh disabled
     }
 
     public void stopAutoRefresh() {
@@ -422,19 +484,6 @@ public class TasksListPanel extends JPanel {
         doneHeader.setText("DONE (0)");
     }
 
-    private Long getSelectedTaskId() {
-        TaskDto t = todoList.getSelectedValue();
-        if (t != null) {
-            return t.getId();
-        }
-        t = doingList.getSelectedValue();
-        if (t != null) {
-            return t.getId();
-        }
-        t = doneList.getSelectedValue();
-        return t == null ? null : t.getId();
-    }
-
     private String formatDue(String raw) {
         if (raw == null || raw.trim().isEmpty()) {
             return "";
@@ -445,6 +494,15 @@ public class TasksListPanel extends JPanel {
             return ldt.format(fmt);
         } catch (Exception ex) {
             return raw;
+        }
+    }
+
+    private void removeFromModel(Long taskId, DefaultListModel<TaskDto> model) {
+        for (int i = 0; i < model.size(); i++) {
+            if (taskId.equals(model.get(i).getId())) {
+                model.remove(i);
+                return;
+            }
         }
     }
 }
