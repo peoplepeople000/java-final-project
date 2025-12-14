@@ -89,6 +89,19 @@ public class DesktopApiClient {
                 new ParameterizedTypeReference<TaskDto>() {});
     }
 
+    public TaskDto updateTask(Long taskId, String title, String description, String status, String priority,
+            Long assigneeId, String dueDate) {
+        TaskFullUpdateRequest request = new TaskFullUpdateRequest();
+        request.setTitle(title);
+        request.setDescription(description);
+        request.setStatus(status);
+        request.setPriority(priority);
+        request.setAssigneeId(assigneeId);
+        request.setDueDate(dueDate);
+        return exchangeWithAuth("/api/tasks/" + taskId, HttpMethod.PATCH, request,
+                new ParameterizedTypeReference<TaskDto>() {});
+    }
+
     public void deleteTask(Long taskId) {
         exchangeWithAuth("/api/tasks/" + taskId, HttpMethod.DELETE, null,
                 new ParameterizedTypeReference<Void>() {});
@@ -636,6 +649,63 @@ public class DesktopApiClient {
 
         public void setStatus(String status) {
             this.status = status;
+        }
+    }
+
+    private static class TaskFullUpdateRequest {
+        private String title;
+        private String description;
+        private String status;
+        private String priority;
+        private Long assigneeId;
+        private String dueDate;
+
+        public String getTitle() {
+            return title;
+        }
+
+        public void setTitle(String title) {
+            this.title = title;
+        }
+
+        public String getDescription() {
+            return description;
+        }
+
+        public void setDescription(String description) {
+            this.description = description;
+        }
+
+        public String getStatus() {
+            return status;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
+        }
+
+        public String getPriority() {
+            return priority;
+        }
+
+        public void setPriority(String priority) {
+            this.priority = priority;
+        }
+
+        public Long getAssigneeId() {
+            return assigneeId;
+        }
+
+        public void setAssigneeId(Long assigneeId) {
+            this.assigneeId = assigneeId;
+        }
+
+        public String getDueDate() {
+            return dueDate;
+        }
+
+        public void setDueDate(String dueDate) {
+            this.dueDate = dueDate;
         }
     }
 

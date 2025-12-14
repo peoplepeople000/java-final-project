@@ -4,6 +4,9 @@ import com.example.taskmanager.desktop.DesktopApiClient.ProjectDto;
 import com.example.taskmanager.desktop.DesktopApiClient.TaskDto;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.List;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
@@ -14,6 +17,7 @@ import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.Timer;
 import javax.swing.SwingWorker;
 import javax.swing.ListSelectionModel;
 
@@ -26,6 +30,8 @@ public class TasksListPanel extends JPanel {
     private final JLabel projectLabel = new JLabel("No project selected");
     private final JComboBox<String> statusCombo = new JComboBox<>(new String[] { "TODO", "DOING", "DONE" });
     private ProjectDto currentProject;
+    private final Timer refreshTimer;
+    private final AtomicBoolean refreshInProgress = new AtomicBoolean(false);
 
     public TasksListPanel(DesktopApiClient apiClient) {
         this.apiClient = apiClient;
@@ -54,20 +60,35 @@ public class TasksListPanel extends JPanel {
         });
 
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        JButton refreshBtn = new JButton("Refresh");
         JButton addBtn = new JButton("+ Task");
+        JButton editBtn = new JButton("Edit Task");
         JButton updateBtn = new JButton("Update Status");
         JButton deleteBtn = new JButton("Delete Task");
-        toolbar.add(refreshBtn);
         toolbar.add(addBtn);
+        toolbar.add(editBtn);
         toolbar.add(statusCombo);
         toolbar.add(updateBtn);
         toolbar.add(deleteBtn);
 
-        refreshBtn.addActionListener(e -> reloadTasks());
         addBtn.addActionListener(e -> openCreateDialog());
+        editBtn.addActionListener(e -> openEditDialog());
         updateBtn.addActionListener(e -> updateSelected());
         deleteBtn.addActionListener(e -> deleteSelected());
+        editBtn.setEnabled(false);
+
+        list.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                editBtn.setEnabled(list.getSelectedValue() != null);
+            }
+        });
+        list.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && list.getSelectedValue() != null) {
+                    openEditDialog();
+                }
+            }
+        });
 
         statusLabel.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
 
@@ -78,6 +99,9 @@ public class TasksListPanel extends JPanel {
         add(projectLabel, BorderLayout.NORTH);
         add(new JScrollPane(list), BorderLayout.CENTER);
         add(bottom, BorderLayout.SOUTH);
+
+        refreshTimer = new Timer(5000, e -> timedRefresh());
+        refreshTimer.start();
     }
 
     public void setCurrentProject(ProjectDto project) {
@@ -96,11 +120,28 @@ public class TasksListPanel extends JPanel {
         setCurrentProject(null);
     }
 
+    private void timedRefresh() {
+        if (currentProject == null) {
+            return;
+        }
+        if (refreshInProgress.get()) {
+            return;
+        }
+        reloadTasks();
+    }
+
     private void reloadTasks() {
         if (currentProject == null) {
             statusLabel.setText("Select a project to view tasks");
             return;
         }
+        refreshInProgress.set(true);
+        Long selectedId = null;
+        TaskDto selectedTask = list.getSelectedValue();
+        if (selectedTask != null) {
+            selectedId = selectedTask.getId();
+        }
+        final Long preserveId = selectedId;
         new SwingWorker<List<TaskDto>, Void>() {
             @Override
             protected List<TaskDto> doInBackground() {
@@ -109,11 +150,20 @@ public class TasksListPanel extends JPanel {
 
             @Override
             protected void done() {
+                refreshInProgress.set(false);
                 try {
                     List<TaskDto> tasks = get();
                     model.clear();
                     for (TaskDto t : tasks) {
                         model.addElement(t);
+                    }
+                    if (preserveId != null) {
+                        for (int i = 0; i < model.size(); i++) {
+                            if (preserveId.equals(model.get(i).getId())) {
+                                list.setSelectedIndex(i);
+                                break;
+                            }
+                        }
                     }
                     statusLabel.setText("Loaded " + tasks.size() + " tasks");
                 } catch (Exception ex) {
@@ -124,14 +174,46 @@ public class TasksListPanel extends JPanel {
     }
 
     private void openCreateDialog() {
+        refreshTimer.stop();
         if (currentProject == null) {
             JOptionPane.showMessageDialog(this, "Select a project first");
+            refreshTimer.start();
             return;
         }
         java.awt.Window owner = javax.swing.SwingUtilities.getWindowAncestor(this);
         CreateTaskDialog dialog = new CreateTaskDialog(apiClient, owner,
                 currentProject.getId(), currentProject.getName());
-        dialog.setOnSuccess(this::reloadTasks);
+        dialog.setOnSuccess(() -> {
+            reloadTasks();
+            refreshTimer.start();
+        });
+        dialog.addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosed(java.awt.event.WindowEvent e) {
+                refreshTimer.start();
+            }
+        });
+        dialog.setVisible(true);
+    }
+
+    private void openEditDialog() {
+        TaskDto selected = list.getSelectedValue();
+        if (selected == null) {
+            JOptionPane.showMessageDialog(this, "Select a task first");
+            return;
+        }
+        refreshTimer.stop();
+        java.awt.Window owner = javax.swing.SwingUtilities.getWindowAncestor(this);
+        EditTaskDialog dialog = new EditTaskDialog(owner, apiClient, currentProject.getId(), selected, () -> {
+            reloadTasks();
+            refreshTimer.start();
+        });
+        dialog.addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosed(java.awt.event.WindowEvent e) {
+                refreshTimer.start();
+            }
+        });
         dialog.setVisible(true);
     }
 
@@ -171,6 +253,7 @@ public class TasksListPanel extends JPanel {
         if (confirm != JOptionPane.YES_OPTION) {
             return;
         }
+        refreshTimer.stop();
         new SwingWorker<Void, Void>() {
             @Override
             protected Void doInBackground() {
@@ -180,6 +263,7 @@ public class TasksListPanel extends JPanel {
 
             @Override
             protected void done() {
+                refreshTimer.start();
                 try {
                     get();
                     statusLabel.setText("Task deleted");
